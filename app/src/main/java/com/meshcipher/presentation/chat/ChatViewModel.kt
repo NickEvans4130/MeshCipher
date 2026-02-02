@@ -6,22 +6,29 @@ import androidx.lifecycle.viewModelScope
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.Message
-import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
+import com.meshcipher.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.UUID
 import javax.inject.Inject
+
+sealed class SendingState {
+    object Idle : SendingState()
+    object Sending : SendingState()
+    object Sent : SendingState()
+    data class Error(val message: String) : SendingState()
+}
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
-    private val contactRepository: ContactRepository
+    private val contactRepository: ContactRepository,
+    private val sendMessageUseCase: SendMessageUseCase
 ) : ViewModel() {
 
     private val conversationId: String = savedStateHandle.get<String>("conversationId")
@@ -60,6 +67,9 @@ class ChatViewModel @Inject constructor(
     private val _messageInput = MutableStateFlow("")
     val messageInput = _messageInput.asStateFlow()
 
+    private val _sendingState = MutableStateFlow<SendingState>(SendingState.Idle)
+    val sendingState = _sendingState.asStateFlow()
+
     fun updateMessageInput(text: String) {
         _messageInput.value = text
     }
@@ -69,23 +79,31 @@ class ChatViewModel @Inject constructor(
         if (content.isEmpty()) return
 
         val contactValue = contact.value ?: return
+        val conv = conversation.value ?: return
+
+        _sendingState.value = SendingState.Sending
+        _messageInput.value = ""
 
         viewModelScope.launch {
-            val message = Message(
-                id = UUID.randomUUID().toString(),
+            val result = sendMessageUseCase(
                 conversationId = conversationId,
-                senderId = "me", // TODO: Get actual user ID
-                recipientId = contactValue.id,
-                content = content,
-                timestamp = System.currentTimeMillis(),
-                status = MessageStatus.PENDING,
-                isOwnMessage = true
+                contactId = conv.contactId,
+                senderId = "me",
+                content = content
             )
 
-            messageRepository.insertMessage(message)
-            _messageInput.value = ""
-
-            conversationRepository.markConversationAsRead(conversationId)
+            if (result.isSuccess) {
+                _sendingState.value = SendingState.Sent
+                conversationRepository.markConversationAsRead(conversationId)
+            } else {
+                _sendingState.value = SendingState.Error(
+                    result.exceptionOrNull()?.message ?: "Send failed"
+                )
+            }
         }
+    }
+
+    fun clearSendingState() {
+        _sendingState.value = SendingState.Idle
     }
 }
