@@ -1,6 +1,7 @@
 package com.meshcipher.data.encryption
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import org.signal.libsignal.protocol.*
 import org.signal.libsignal.protocol.groups.state.InMemorySenderKeyStore
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
@@ -13,7 +14,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SignalProtocolStoreImpl @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) : SignalProtocolStore {
 
     private val inMemoryStore: InMemorySignalProtocolStore
