@@ -11,6 +11,7 @@ import com.meshcipher.presentation.chat.ChatScreen
 import com.meshcipher.presentation.contacts.AddContactScreen
 import com.meshcipher.presentation.contacts.ContactsScreen
 import com.meshcipher.presentation.conversations.ConversationsScreen
+import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
@@ -69,6 +70,15 @@ fun MeshCipherNavigation(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                onMeshNetworkClick = {
+                    navController.navigate(Screen.MeshNetwork.route)
+                }
+            )
+        }
+
+        composable(Screen.MeshNetwork.route) {
+            MeshNetworkScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }

@@ -1,15 +1,21 @@
 package com.meshcipher.presentation.settings
 
+import android.app.Application
 import android.content.Intent
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.meshcipher.data.bluetooth.BluetoothMeshManager
+import com.meshcipher.data.bluetooth.BluetoothMeshService
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
+import com.meshcipher.util.PermissionUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -17,9 +23,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    private val application: Application,
     private val appPreferences: AppPreferences,
-    private val torManager: TorManager
-) : ViewModel() {
+    private val torManager: TorManager,
+    private val bluetoothMeshManager: BluetoothMeshManager
+) : AndroidViewModel(application) {
 
     val connectionMode: StateFlow<ConnectionMode> = appPreferences.connectionMode
         .map { name ->
@@ -42,6 +50,20 @@ class SettingsViewModel @Inject constructor(
             initialValue = TorManager.TorStatus()
         )
 
+    val meshEnabled: StateFlow<Boolean> = appPreferences.meshEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    private val _hasBluetoothPermissions = MutableStateFlow(false)
+    val hasBluetoothPermissions: StateFlow<Boolean> = _hasBluetoothPermissions.asStateFlow()
+
+    init {
+        checkBluetoothPermissions()
+    }
+
     fun setConnectionMode(mode: ConnectionMode) {
         viewModelScope.launch {
             appPreferences.setConnectionMode(mode.name)
@@ -57,4 +79,25 @@ class SettingsViewModel @Inject constructor(
     fun getOrbotInstallIntent(): Intent = torManager.getOrbotInstallIntent()
 
     fun getOrbotLaunchIntent(): Intent? = torManager.getOrbotLaunchIntent()
+
+    fun setMeshEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            appPreferences.setMeshEnabled(enabled)
+            if (enabled) {
+                BluetoothMeshService.start(application)
+            } else {
+                BluetoothMeshService.stop(application)
+            }
+        }
+    }
+
+    fun checkBluetoothPermissions() {
+        _hasBluetoothPermissions.value = PermissionUtils.hasBluetoothPermissions(application)
+    }
+
+    fun isBluetoothEnabled(): Boolean = bluetoothMeshManager.isBluetoothEnabled()
+
+    fun isBluetoothSupported(): Boolean = bluetoothMeshManager.isBluetoothSupported()
+
+    fun getRequiredPermissions(): Array<String> = PermissionUtils.getRequiredBluetoothPermissions()
 }

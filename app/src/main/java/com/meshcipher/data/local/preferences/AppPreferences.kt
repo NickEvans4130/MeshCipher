@@ -25,6 +25,7 @@ class AppPreferences @Inject constructor(
         val DISPLAY_NAME = stringPreferencesKey("display_name")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val CONNECTION_MODE = stringPreferencesKey("connection_mode")
+        val MESH_ENABLED = booleanPreferencesKey("mesh_enabled")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -64,6 +65,16 @@ class AppPreferences @Inject constructor(
     suspend fun setConnectionMode(mode: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.CONNECTION_MODE] = mode
+        }
+    }
+
+    val meshEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.MESH_ENABLED] ?: false
+    }
+
+    suspend fun setMeshEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MESH_ENABLED] = enabled
         }
     }
 }
