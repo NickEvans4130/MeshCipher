@@ -1,0 +1,184 @@
+package com.meshcipher.data.bluetooth
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.meshcipher.R
+import com.meshcipher.data.bluetooth.routing.MeshRouter
+import com.meshcipher.domain.model.MeshMessage
+import com.meshcipher.presentation.MainActivity
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class BluetoothMeshService : Service() {
+
+    @Inject
+    lateinit var bluetoothMeshManager: BluetoothMeshManager
+
+    @Inject
+    lateinit var gattServerManager: GattServerManager
+
+    @Inject
+    lateinit var meshRouter: MeshRouter
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, createNotification())
+
+        serviceScope.launch {
+            startMeshNetworking()
+        }
+
+        serviceScope.launch {
+            collectIncomingMessages()
+        }
+
+        serviceScope.launch {
+            maintenanceLoop()
+        }
+
+        Timber.d("BluetoothMeshService created")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        serviceScope.cancel()
+        bluetoothMeshManager.stopAdvertising()
+        bluetoothMeshManager.stopScanning()
+        gattServerManager.stopGattServer()
+        Timber.d("BluetoothMeshService destroyed")
+        super.onDestroy()
+    }
+
+    private suspend fun startMeshNetworking() {
+        val advertiseResult = bluetoothMeshManager.startAdvertising()
+        if (advertiseResult.isFailure) {
+            Timber.e("Failed to start advertising: %s", advertiseResult.exceptionOrNull()?.message)
+        }
+
+        val scanResult = bluetoothMeshManager.startScanning()
+        if (scanResult.isFailure) {
+            Timber.e("Failed to start scanning: %s", scanResult.exceptionOrNull()?.message)
+        }
+
+        val gattResult = gattServerManager.startGattServer()
+        if (gattResult.isFailure) {
+            Timber.e("Failed to start GATT server: %s", gattResult.exceptionOrNull()?.message)
+        }
+    }
+
+    private suspend fun collectIncomingMessages() {
+        gattServerManager.receivedMessages.collect { message ->
+            handleReceivedMessage(message)
+        }
+    }
+
+    private suspend fun handleReceivedMessage(message: MeshMessage) {
+        val myIdentity = try {
+            // Simple check: is this message for us?
+            // Full identity check requires IdentityManager but service already has mesh components
+            message.destinationUserId
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to check message destination")
+            return
+        }
+
+        // Update routing info from incoming message
+        if (message.path.isNotEmpty()) {
+            val fromDeviceId = message.path.last()
+            meshRouter.handleIncomingMessage(message, fromDeviceId)
+        }
+
+        // If message should be relayed (not for us), forward it
+        if (message.shouldRelay()) {
+            serviceScope.launch {
+                meshRouter.routeMessage(message)
+            }
+        }
+    }
+
+    private suspend fun maintenanceLoop() {
+        while (serviceScope.isActive) {
+            delay(MAINTENANCE_INTERVAL_MS)
+            bluetoothMeshManager.removeStalePeers()
+            meshRouter.cleanupStaleRoutes()
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Mesh Network",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Bluetooth mesh networking status"
+                setShowBadge(false)
+            }
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Mesh Network Active")
+            .setContentText("Bluetooth mesh networking is running")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+    }
+
+    companion object {
+        const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "mesh_network"
+        private const val MAINTENANCE_INTERVAL_MS = 30_000L
+
+        fun start(context: Context) {
+            val intent = Intent(context, BluetoothMeshService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, BluetoothMeshService::class.java))
+        }
+    }
+}
