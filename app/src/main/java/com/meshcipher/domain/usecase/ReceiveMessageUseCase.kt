@@ -2,7 +2,7 @@ package com.meshcipher.domain.usecase
 
 import android.util.Base64
 import com.meshcipher.data.remote.dto.QueuedMessage
-import com.meshcipher.data.transport.InternetTransport
+import com.meshcipher.data.transport.TransportManager
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
@@ -17,11 +17,11 @@ class ReceiveMessageUseCase @Inject constructor(
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val contactRepository: ContactRepository,
-    private val internetTransport: InternetTransport
+    private val transportManager: TransportManager
 ) {
 
     suspend operator fun invoke(localDeviceId: String): Result<Int> {
-        val receiveResult = internetTransport.receiveMessages(localDeviceId)
+        val receiveResult = transportManager.getActiveTransport().receiveMessages(localDeviceId)
 
         if (receiveResult.isFailure) {
             return Result.failure(receiveResult.exceptionOrNull() ?: Exception("Receive failed"))
@@ -47,7 +47,7 @@ class ReceiveMessageUseCase @Inject constructor(
 
         // Acknowledge processed messages
         if (ackIds.isNotEmpty()) {
-            internetTransport.acknowledgeMessages(localDeviceId, ackIds)
+            transportManager.getActiveTransport().acknowledgeMessages(localDeviceId, ackIds)
         }
 
         Timber.d("Processed %d/%d messages", processedCount, queuedMessages.size)

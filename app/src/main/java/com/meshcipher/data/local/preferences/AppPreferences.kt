@@ -24,6 +24,7 @@ class AppPreferences @Inject constructor(
         val USER_ID = stringPreferencesKey("user_id")
         val DISPLAY_NAME = stringPreferencesKey("display_name")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
+        val CONNECTION_MODE = stringPreferencesKey("connection_mode")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -53,6 +54,16 @@ class AppPreferences @Inject constructor(
     suspend fun setOnboardingComplete(complete: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ONBOARDING_COMPLETE] = complete
+        }
+    }
+
+    val connectionMode: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CONNECTION_MODE] ?: "DIRECT"
+    }
+
+    suspend fun setConnectionMode(mode: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CONNECTION_MODE] = mode
         }
     }
 }

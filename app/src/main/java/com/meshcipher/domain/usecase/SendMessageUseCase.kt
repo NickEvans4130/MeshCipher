@@ -1,6 +1,6 @@
 package com.meshcipher.domain.usecase
 
-import com.meshcipher.data.transport.InternetTransport
+import com.meshcipher.data.transport.TransportManager
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
@@ -14,7 +14,7 @@ class SendMessageUseCase @Inject constructor(
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val contactRepository: ContactRepository,
-    private val internetTransport: InternetTransport
+    private val transportManager: TransportManager
 ) {
 
     suspend operator fun invoke(
@@ -43,7 +43,7 @@ class SendMessageUseCase @Inject constructor(
         // Send via relay server
         // For now we send plaintext base64-encoded; Signal Protocol encryption
         // will be integrated once key exchange is implemented in a later phase.
-        val sendResult = internetTransport.sendMessage(
+        val sendResult = transportManager.getActiveTransport().sendMessage(
             senderId = senderId,
             recipientId = contact.signalProtocolAddress.name,
             encryptedContent = content.toByteArray()

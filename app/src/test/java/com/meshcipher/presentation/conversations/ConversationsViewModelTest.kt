@@ -1,6 +1,7 @@
 package com.meshcipher.presentation.conversations
 
 import app.cash.turbine.test
+import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.usecase.GetConversationsUseCase
 import io.mockk.every
@@ -18,6 +19,7 @@ import org.junit.Test
 class ConversationsViewModelTest {
 
     private lateinit var getConversationsUseCase: GetConversationsUseCase
+    private lateinit var appPreferences: AppPreferences
     private lateinit var viewModel: ConversationsViewModel
 
     private val testDispatcher = StandardTestDispatcher()
@@ -26,6 +28,8 @@ class ConversationsViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         getConversationsUseCase = mockk()
+        appPreferences = mockk()
+        every { appPreferences.connectionMode } returns flowOf("DIRECT")
     }
 
     @After
@@ -49,7 +53,7 @@ class ConversationsViewModelTest {
 
         every { getConversationsUseCase() } returns flowOf(conversations)
 
-        viewModel = ConversationsViewModel(getConversationsUseCase)
+        viewModel = ConversationsViewModel(getConversationsUseCase, appPreferences)
 
         viewModel.conversations.test {
             // Initial value is emptyList from stateIn
