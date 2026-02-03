@@ -101,6 +101,24 @@ dependencies {
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // Security - Encrypted storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // QR Codes
+    implementation("com.google.zxing:core:3.5.2")
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+
+    // Camera for QR scanning
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
+
+    // JWT parsing
+    implementation("com.auth0.android:jwtdecode:2.0.2")
+
+    // JSON
+    implementation("com.google.code.gson:gson:2.10.1")
+
     // Networking - Retrofit + OkHttp
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
