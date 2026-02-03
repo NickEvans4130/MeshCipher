@@ -1,13 +1,19 @@
 """MeshCipher Relay Server - Message queuing relay for encrypted messaging."""
 
+import base64
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import jwt as pyjwt
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "meshcipher-dev-secret-key")
+
+# Temporary challenge storage
+challenges = {}
 
 # Database configuration
 DB_USER = os.environ.get("DB_USER", "meshcipher")
@@ -181,6 +187,65 @@ def register_device():
     db.session.commit()
 
     return jsonify({"status": "registered", "id": device.id}), 201
+
+
+@app.route("/api/v1/auth/challenge", methods=["POST"])
+def request_challenge():
+    data = request.get_json()
+    if not data or "userId" not in data:
+        return jsonify({"error": "Missing userId"}), 400
+
+    user_id = data["userId"]
+    public_key = data.get("publicKey", "")
+
+    challenge = os.urandom(32)
+    challenge_b64 = base64.b64encode(challenge).decode()
+
+    challenges[user_id] = {
+        "challenge": challenge,
+        "public_key": public_key,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5),
+    }
+
+    return jsonify({"challenge": challenge_b64})
+
+
+@app.route("/api/v1/auth/verify", methods=["POST"])
+def verify_challenge():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON body"}), 400
+
+    user_id = data.get("userId")
+    signature_b64 = data.get("signature")
+
+    if not user_id or not signature_b64:
+        return jsonify({"error": "Missing userId or signature"}), 400
+
+    if user_id not in challenges:
+        return jsonify({"error": "Challenge not found"}), 404
+
+    stored = challenges[user_id]
+
+    if datetime.now(timezone.utc) > stored["expires_at"]:
+        del challenges[user_id]
+        return jsonify({"error": "Challenge expired"}), 401
+
+    # TODO: Verify ECDSA signature with stored public key
+    # For now, accept all valid challenge responses
+
+    token = pyjwt.encode(
+        {
+            "user_id": user_id,
+            "exp": datetime.now(timezone.utc) + timedelta(days=30),
+        },
+        app.config["SECRET_KEY"],
+        algorithm="HS256",
+    )
+
+    del challenges[user_id]
+
+    return jsonify({"token": token, "expires_in": 30 * 24 * 3600})
 
 
 if __name__ == "__main__":
