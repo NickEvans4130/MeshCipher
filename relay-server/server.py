@@ -67,8 +67,8 @@ def health_check():
     try:
         db.session.execute(db.text("SELECT 1"))
         db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {str(e)}"
+    except Exception:
+        db_status = "error"
 
     msg_count = QueuedMessage.query.filter_by(delivered=False).count()
     device_count = RegisteredDevice.query.count()
