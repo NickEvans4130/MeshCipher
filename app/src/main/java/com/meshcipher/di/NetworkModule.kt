@@ -1,6 +1,9 @@
 package com.meshcipher.di
 
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.meshcipher.BuildConfig
+import com.meshcipher.data.remote.api.AuthApiService
 import com.meshcipher.data.remote.api.RelayApiService
 import dagger.Module
 import dagger.Provides
@@ -22,6 +25,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideGson(): Gson {
+        return GsonBuilder().create()
+    }
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -40,11 +49,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    fun provideRetrofit(okHttpClient: OkHttpClient, gson: Gson): Retrofit {
         return Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 
@@ -52,5 +61,11 @@ object NetworkModule {
     @Singleton
     fun provideRelayApiService(retrofit: Retrofit): RelayApiService {
         return retrofit.create(RelayApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAuthApiService(retrofit: Retrofit): AuthApiService {
+        return retrofit.create(AuthApiService::class.java)
     }
 }
