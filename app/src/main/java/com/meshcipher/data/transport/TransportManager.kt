@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -27,7 +26,8 @@ class TransportManager @Inject constructor(
     private val appPreferences: AppPreferences,
     private val torManager: TorManager,
     private val gson: Gson,
-    private val retrofit: Retrofit
+    private val retrofit: Retrofit,
+    private val bluetoothMeshTransport: BluetoothMeshTransport
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -61,6 +61,44 @@ class TransportManager @Inject constructor(
     }
 
     fun getConnectionMode(): ConnectionMode = currentMode.get()
+
+    fun getBluetoothMeshTransport(): BluetoothMeshTransport = bluetoothMeshTransport
+
+    fun isMeshAvailable(): Boolean = bluetoothMeshTransport.isAvailable()
+
+    suspend fun sendWithFallback(
+        senderId: String,
+        recipientId: String,
+        encryptedContent: ByteArray
+    ): Result<String> {
+        val mode = currentMode.get()
+
+        // P2P_ONLY: mesh only
+        if (mode == ConnectionMode.P2P_ONLY) {
+            return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+        }
+
+        // Try primary internet transport first
+        val transport = getActiveTransport()
+        val internetResult = try {
+            transport.sendMessage(senderId, recipientId, encryptedContent)
+        } catch (e: Exception) {
+            Timber.w(e, "Internet transport failed, trying mesh fallback")
+            Result.failure(e)
+        }
+
+        if (internetResult.isSuccess) {
+            return internetResult
+        }
+
+        // Fallback to Bluetooth mesh
+        if (bluetoothMeshTransport.isAvailable()) {
+            Timber.d("Falling back to Bluetooth mesh for %s", recipientId)
+            return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+        }
+
+        return internetResult
+    }
 
     private fun getOrCreateTorTransport(): InternetTransport {
         torTransport?.let { return it }

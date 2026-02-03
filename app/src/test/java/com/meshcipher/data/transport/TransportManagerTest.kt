@@ -19,6 +19,7 @@ class TransportManagerTest {
     private lateinit var torManager: TorManager
     private lateinit var gson: Gson
     private lateinit var retrofit: Retrofit
+    private lateinit var bluetoothMeshTransport: BluetoothMeshTransport
     private lateinit var transportManager: TransportManager
 
     @Before
@@ -28,15 +29,18 @@ class TransportManagerTest {
         torManager = mockk()
         gson = Gson()
         retrofit = mockk(relaxed = true)
+        bluetoothMeshTransport = mockk()
 
         every { appPreferences.connectionMode } returns flowOf(ConnectionMode.DIRECT.name)
+        every { bluetoothMeshTransport.isAvailable() } returns false
 
         transportManager = TransportManager(
             directTransport = directTransport,
             appPreferences = appPreferences,
             torManager = torManager,
             gson = gson,
-            retrofit = retrofit
+            retrofit = retrofit,
+            bluetoothMeshTransport = bluetoothMeshTransport
         )
     }
 
@@ -55,5 +59,19 @@ class TransportManagerTest {
     @Test
     fun `clearTorTransport does not throw`() {
         transportManager.clearTorTransport()
+    }
+
+    @Test
+    fun `isMeshAvailable delegates to bluetoothMeshTransport`() {
+        every { bluetoothMeshTransport.isAvailable() } returns false
+        assertFalse(transportManager.isMeshAvailable())
+
+        every { bluetoothMeshTransport.isAvailable() } returns true
+        assertTrue(transportManager.isMeshAvailable())
+    }
+
+    @Test
+    fun `getBluetoothMeshTransport returns injected instance`() {
+        assertSame(bluetoothMeshTransport, transportManager.getBluetoothMeshTransport())
     }
 }

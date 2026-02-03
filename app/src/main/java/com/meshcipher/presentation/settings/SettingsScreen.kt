@@ -1,5 +1,7 @@
 package com.meshcipher.presentation.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,8 +9,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,11 +32,20 @@ import com.meshcipher.domain.model.ConnectionMode
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit,
+    onMeshNetworkClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
     val torStatus by viewModel.torStatus.collectAsState()
+    val meshEnabled by viewModel.meshEnabled.collectAsState()
+    val hasBluetoothPermissions by viewModel.hasBluetoothPermissions.collectAsState()
     val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        viewModel.checkBluetoothPermissions()
+    }
 
     LaunchedEffect(Unit) {
         viewModel.refreshTorStatus()
@@ -56,6 +70,7 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Connection Mode Section
             Text(
                 text = "Connection Mode",
                 style = MaterialTheme.typography.titleMedium,
@@ -84,14 +99,15 @@ fun SettingsScreen(
 
             ConnectionModeCard(
                 title = "P2P Only",
-                description = "Peer-to-peer mesh networking. Coming soon.",
+                description = "Bluetooth mesh only. No internet required.",
                 selected = connectionMode == ConnectionMode.P2P_ONLY,
-                enabled = false,
-                onClick = {}
+                enabled = meshEnabled,
+                onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_ONLY) }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // TOR Status Section
             TorStatusSection(
                 torStatus = torStatus,
                 connectionMode = connectionMode,
@@ -105,6 +121,128 @@ fun SettingsScreen(
                     }
                 }
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Bluetooth Mesh Section
+            Text(
+                text = "Bluetooth Mesh",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Enable Mesh Networking",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Communicate with nearby devices via Bluetooth",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = meshEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && !hasBluetoothPermissions) {
+                                    permissionLauncher.launch(viewModel.getRequiredPermissions())
+                                } else {
+                                    viewModel.setMeshEnabled(enabled)
+                                }
+                            },
+                            enabled = hasBluetoothPermissions || !meshEnabled
+                        )
+                    }
+
+                    if (!hasBluetoothPermissions) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Bluetooth permissions required",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(
+                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                        ) {
+                            Text("Grant Permissions")
+                        }
+                    }
+
+                    if (!viewModel.isBluetoothEnabled() && viewModel.isBluetoothSupported()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Bluetooth,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Bluetooth is disabled. Enable it in system settings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // View Mesh Network button
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onMeshNetworkClick)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "View Mesh Network",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "See network topology and nearby devices",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
