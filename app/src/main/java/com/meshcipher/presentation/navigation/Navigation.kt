@@ -11,7 +11,9 @@ import com.meshcipher.presentation.chat.ChatScreen
 import com.meshcipher.presentation.contacts.AddContactScreen
 import com.meshcipher.presentation.contacts.ContactsScreen
 import com.meshcipher.presentation.conversations.ConversationsScreen
+import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
+import com.meshcipher.presentation.share.ShareContactScreen
 
 @Composable
 fun MeshCipherNavigation(
@@ -67,6 +69,22 @@ fun MeshCipherNavigation(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.ShareContact.route) {
+            ShareContactScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.ScanContact.route) {
+            ScanContactScreen(
+                onContactScanned = { contactCard ->
+                    // Contact scanned, pop back
+                    navController.popBackStack()
+                },
                 onBackClick = { navController.popBackStack() }
             )
         }
