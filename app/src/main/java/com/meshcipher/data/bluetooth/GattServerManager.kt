@@ -38,12 +38,17 @@ class GattServerManager @Inject constructor(
 
     private val connectedDevices = CopyOnWriteArraySet<BluetoothDevice>()
 
+    @Volatile
+    private var serviceAdded = false
+
     private val gattCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(
             device: BluetoothDevice,
             status: Int,
             newState: Int
         ) {
+            Timber.d("GATT onConnectionStateChange: device=%s, status=%d, newState=%d",
+                device.address, status, newState)
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Timber.d("GATT device connected: %s", device.address)
@@ -56,6 +61,15 @@ class GattServerManager @Inject constructor(
             }
         }
 
+        override fun onServiceAdded(status: Int, service: BluetoothGattService?) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                serviceAdded = true
+                Timber.d("GATT service added successfully: %s", service?.uuid)
+            } else {
+                Timber.e("Failed to add GATT service: status=%d", status)
+            }
+        }
+
         override fun onCharacteristicWriteRequest(
             device: BluetoothDevice,
             requestId: Int,
@@ -65,8 +79,12 @@ class GattServerManager @Inject constructor(
             offset: Int,
             value: ByteArray
         ) {
+            Timber.d("GATT onCharacteristicWriteRequest: device=%s, char=%s, bytes=%d, responseNeeded=%s",
+                device.address, characteristic.uuid, value.size, responseNeeded)
+
             when (characteristic.uuid) {
                 BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID -> {
+                    Timber.d("Received message write on MESSAGE characteristic from %s", device.address)
                     handleMessageReceived(device, value)
 
                     if (responseNeeded) {
@@ -127,6 +145,8 @@ class GattServerManager @Inject constructor(
         val manager = bluetoothManager
             ?: return Result.failure(Exception("BluetoothManager not available"))
 
+        Timber.d("Starting GATT server...")
+
         val service = BluetoothGattService(
             BluetoothMeshManager.SERVICE_UUID,
             BluetoothGattService.SERVICE_TYPE_PRIMARY
@@ -134,10 +154,12 @@ class GattServerManager @Inject constructor(
 
         val messageCharacteristic = BluetoothGattCharacteristic(
             BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID,
-            BluetoothGattCharacteristic.PROPERTY_WRITE,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or
+                    BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         service.addCharacteristic(messageCharacteristic)
+        Timber.d("Added MESSAGE characteristic: %s", BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID)
 
         val ackCharacteristic = BluetoothGattCharacteristic(
             BluetoothMeshManager.CHARACTERISTIC_ACK_UUID,
@@ -146,11 +168,19 @@ class GattServerManager @Inject constructor(
             BluetoothGattCharacteristic.PERMISSION_READ
         )
         service.addCharacteristic(ackCharacteristic)
+        Timber.d("Added ACK characteristic: %s", BluetoothMeshManager.CHARACTERISTIC_ACK_UUID)
 
         return try {
+            serviceAdded = false
             gattServer = manager.openGattServer(context, gattCallback)
-            gattServer?.addService(service)
-            Timber.d("GATT server started")
+            if (gattServer == null) {
+                Timber.e("Failed to open GATT server - returned null")
+                return Result.failure(Exception("Failed to open GATT server"))
+            }
+            Timber.d("GATT server opened, adding service: %s", BluetoothMeshManager.SERVICE_UUID)
+            val added = gattServer?.addService(service)
+            Timber.d("addService returned: %s", added)
+            Timber.d("GATT server started, waiting for onServiceAdded callback")
             Result.success(Unit)
         } catch (e: SecurityException) {
             Timber.e(e, "Missing Bluetooth permission for GATT server")
@@ -160,6 +190,8 @@ class GattServerManager @Inject constructor(
             Result.failure(e)
         }
     }
+
+    fun isServiceReady(): Boolean = serviceAdded
 
     fun stopGattServer() {
         try {
