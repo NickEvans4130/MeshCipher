@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -55,6 +56,7 @@ fun SettingsScreen(
     val userId by viewModel.userId.collectAsState()
     val context = LocalContext.current
     var showCopiedMessage by remember { mutableStateOf(false) }
+    var hasNotificationPermission by remember { mutableStateOf(viewModel.hasNotificationPermission()) }
 
     LaunchedEffect(showCopiedMessage) {
         if (showCopiedMessage) {
@@ -67,6 +69,7 @@ fun SettingsScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         viewModel.checkBluetoothPermissions()
+        hasNotificationPermission = viewModel.hasNotificationPermission()
     }
 
     LaunchedEffect(Unit) {
@@ -346,6 +349,30 @@ fun SettingsScreen(
                             onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
                         ) {
                             Text("Grant Permissions")
+                        }
+                    }
+
+                    if (!hasNotificationPermission) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Enable notifications to be alerted of new messages",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(
+                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                        ) {
+                            Text("Enable Notifications")
                         }
                     }
 

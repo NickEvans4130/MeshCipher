@@ -21,6 +21,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
+    <!-- Notification permission (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- BLE feature -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
