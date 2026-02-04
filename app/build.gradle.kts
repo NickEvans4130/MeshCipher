@@ -137,6 +137,14 @@ dependencies {
     implementation("androidx.hilt:hilt-work:1.1.0")
     ksp("androidx.hilt:hilt-compiler:1.1.0")
 
+    // Media - Image Loading
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-video:2.5.0")
+
+    // Media - ExoPlayer for playback
+    implementation("androidx.media3:media3-exoplayer:1.2.0")
+    implementation("androidx.media3:media3-ui:1.2.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
