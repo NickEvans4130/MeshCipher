@@ -45,7 +45,29 @@ class GattClientManager @Inject constructor(
             return@withContext Result.failure(Exception("Invalid Bluetooth address: $bluetoothAddress"))
         }
 
-        try {
+        // Retry on GATT status 133 (transient BLE error)
+        var lastResult: Result<Unit> = Result.failure(Exception("Not attempted"))
+        for (attempt in 1..MAX_RETRIES) {
+            lastResult = attemptSend(device, bluetoothAddress, message)
+            if (lastResult.isSuccess) return@withContext lastResult
+
+            val error = lastResult.exceptionOrNull()?.message ?: ""
+            if (error.contains("status 133") && attempt < MAX_RETRIES) {
+                Timber.d("GATT 133 on attempt %d, retrying in %dms", attempt, RETRY_DELAY_MS)
+                kotlinx.coroutines.delay(RETRY_DELAY_MS)
+            } else {
+                break
+            }
+        }
+        lastResult
+    }
+
+    private suspend fun attemptSend(
+        device: BluetoothDevice,
+        bluetoothAddress: String,
+        message: MeshMessage
+    ): Result<Unit> {
+        return try {
             withTimeout(CONNECTION_TIMEOUT_MS) {
                 suspendCancellableCoroutine { continuation ->
                     val callback = object : BluetoothGattCallback() {
@@ -300,6 +322,8 @@ class GattClientManager @Inject constructor(
     }
 
     companion object {
-        const val CONNECTION_TIMEOUT_MS = 120_000L
+        const val CONNECTION_TIMEOUT_MS = 60_000L
+        const val MAX_RETRIES = 3
+        const val RETRY_DELAY_MS = 1000L
     }
 }

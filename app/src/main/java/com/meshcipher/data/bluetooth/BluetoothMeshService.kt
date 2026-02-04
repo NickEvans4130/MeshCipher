@@ -203,34 +203,29 @@ class BluetoothMeshService : Service() {
                     mediaMetadataJson = if (envelope.has("mediaMetadata")) envelope.getString("mediaMetadata") else null
                     Timber.d("Received media message: id=%s, type=%s", mediaId, mediaType)
 
-                    // Save received media data to local cache for display
+                    // Save received thumbnail to cache for display
                     val mId = mediaId
                     val mType = mediaType
-                    if (mId != null && mType != null) {
-                        if (envelope.has("mediaData")) {
-                            try {
-                                val mediaDataB64 = envelope.getString("mediaData")
-                                val mediaBytes = Base64.decode(mediaDataB64, Base64.NO_WRAP)
-                                val cacheFile = mediaManager.getMediaCacheFile(mId, mType)
-                                cacheFile.writeBytes(mediaBytes)
-                                Timber.d("Saved received media to cache: %s (%d bytes)",
-                                    cacheFile.absolutePath, mediaBytes.size)
-                            } catch (e2: Exception) {
-                                Timber.w(e2, "Failed to save received media data")
-                            }
-                        }
+                    if (mId != null && mType != null && envelope.has("thumbnailData")) {
+                        try {
+                            val thumbDataB64 = envelope.getString("thumbnailData")
+                            val thumbBytes = Base64.decode(thumbDataB64, Base64.NO_WRAP)
 
-                        if (envelope.has("thumbnailData")) {
-                            try {
-                                val thumbDataB64 = envelope.getString("thumbnailData")
-                                val thumbBytes = Base64.decode(thumbDataB64, Base64.NO_WRAP)
-                                val thumbFile = mediaManager.getMediaCacheFile(
-                                    "${mId}_thumb", MediaType.PHOTO)
-                                thumbFile.writeBytes(thumbBytes)
-                                Timber.d("Saved received thumbnail to cache: %s", thumbFile.absolutePath)
-                            } catch (e2: Exception) {
-                                Timber.w(e2, "Failed to save received thumbnail data")
+                            // Save as thumbnail
+                            val thumbFile = mediaManager.getMediaCacheFile(
+                                "${mId}_thumb", MediaType.PHOTO)
+                            thumbFile.writeBytes(thumbBytes)
+
+                            // For photos, also save as the main media cache file
+                            // so it renders inline (thumbnail resolution)
+                            if (mType == MediaType.PHOTO) {
+                                val cacheFile = mediaManager.getMediaCacheFile(mId, mType)
+                                cacheFile.writeBytes(thumbBytes)
                             }
+
+                            Timber.d("Saved received thumbnail to cache (%d bytes)", thumbBytes.size)
+                        } catch (e2: Exception) {
+                            Timber.w(e2, "Failed to save received thumbnail data")
                         }
                     }
                 }

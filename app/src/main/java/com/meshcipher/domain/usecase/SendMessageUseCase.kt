@@ -60,25 +60,20 @@ class SendMessageUseCase @Inject constructor(
                 put("mediaMetadata", mediaMetadataJson)
             }
 
-            // For P2P: include raw media data from cache so receiver can display it
+            // For P2P: include thumbnail only (BLE can't handle full media)
+            // Full media data is too large for GATT characteristic writes
+            // and causes status 133 disconnects or timeouts.
             if (mediaId != null && mediaType != null) {
                 try {
-                    val cacheFile = mediaManager.getMediaCacheFile(mediaId, mediaType)
-                    if (cacheFile.exists()) {
-                        val mediaBytes = cacheFile.readBytes()
-                        envelope.put("mediaData", Base64.encodeToString(
-                            mediaBytes, Base64.NO_WRAP))
-                        Timber.d("Included %d bytes of media data in envelope", mediaBytes.size)
-                    }
-
                     val thumbFile = mediaManager.getMediaCacheFile("${mediaId}_thumb", MediaType.PHOTO)
                     if (thumbFile.exists()) {
                         val thumbBytes = thumbFile.readBytes()
                         envelope.put("thumbnailData", Base64.encodeToString(
                             thumbBytes, Base64.NO_WRAP))
+                        Timber.d("Included %d byte thumbnail in envelope", thumbBytes.size)
                     }
                 } catch (e: Exception) {
-                    Timber.w(e, "Failed to include media data in envelope")
+                    Timber.w(e, "Failed to include thumbnail in envelope")
                 }
             }
 
