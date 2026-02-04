@@ -15,5 +15,6 @@ data class ConversationEntity(
     @ColumnInfo(name = "last_message_id") val lastMessageId: String?,
     @ColumnInfo(name = "last_message_timestamp") val lastMessageTimestamp: Long?,
     @ColumnInfo(name = "unread_count") val unreadCount: Int,
-    @ColumnInfo(name = "is_pinned") val isPinned: Boolean
+    @ColumnInfo(name = "is_pinned") val isPinned: Boolean,
+    @ColumnInfo(name = "message_expiry_mode") val messageExpiryMode: String? = null
 )

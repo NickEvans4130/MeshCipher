@@ -36,4 +36,10 @@ interface ConversationDao {
 
     @Delete
     suspend fun deleteConversation(conversation: ConversationEntity)
+
+    @Query("UPDATE conversations SET message_expiry_mode = :mode WHERE id = :conversationId")
+    suspend fun setMessageExpiryMode(conversationId: String, mode: String?)
+
+    @Query("SELECT * FROM conversations WHERE message_expiry_mode IS NOT NULL")
+    suspend fun getConversationsWithExpiryMode(): List<ConversationEntity>
 }

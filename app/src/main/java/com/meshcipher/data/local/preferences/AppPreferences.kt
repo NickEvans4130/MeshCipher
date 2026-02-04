@@ -26,6 +26,7 @@ class AppPreferences @Inject constructor(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val CONNECTION_MODE = stringPreferencesKey("connection_mode")
         val MESH_ENABLED = booleanPreferencesKey("mesh_enabled")
+        val MESSAGE_EXPIRY_MODE = stringPreferencesKey("message_expiry_mode")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -75,6 +76,16 @@ class AppPreferences @Inject constructor(
     suspend fun setMeshEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.MESH_ENABLED] = enabled
+        }
+    }
+
+    val messageExpiryMode: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.MESSAGE_EXPIRY_MODE] ?: "NEVER"
+    }
+
+    suspend fun setMessageExpiryMode(mode: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MESSAGE_EXPIRY_MODE] = mode
         }
     }
 }

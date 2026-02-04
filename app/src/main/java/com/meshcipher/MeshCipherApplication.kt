@@ -2,7 +2,10 @@ package com.meshcipher
 
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.*
+import com.meshcipher.data.cleanup.MessageCleanupManager
+import com.meshcipher.data.worker.MessageCleanupWorker
 import com.meshcipher.data.worker.MessageSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
@@ -15,6 +18,9 @@ class MeshCipherApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject
+    lateinit var messageCleanupManager: MessageCleanupManager
+
     override fun onCreate() {
         super.onCreate()
 
@@ -25,6 +31,8 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         Timber.d("MeshCipher application started")
 
         scheduleMessageSync()
+        scheduleMessageCleanup()
+        setupAppLifecycleObserver()
     }
 
     override val workManagerConfiguration: Configuration
@@ -55,5 +63,30 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         )
 
         Timber.d("Message sync worker scheduled")
+    }
+
+    private fun scheduleMessageCleanup() {
+        val cleanupRequest = PeriodicWorkRequestBuilder<MessageCleanupWorker>(
+            15, TimeUnit.MINUTES
+        )
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                WorkRequest.MIN_BACKOFF_MILLIS,
+                TimeUnit.MILLISECONDS
+            )
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            MessageCleanupWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            cleanupRequest
+        )
+
+        Timber.d("Message cleanup worker scheduled")
+    }
+
+    private fun setupAppLifecycleObserver() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(messageCleanupManager)
+        Timber.d("App lifecycle observer registered for message cleanup")
     }
 }
