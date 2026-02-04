@@ -7,7 +7,13 @@ sealed class Screen(val route: String) {
         fun createRoute(conversationId: String) = "chat/$conversationId"
     }
     object Contacts : Screen("contacts")
-    object AddContact : Screen("add_contact")
+    object AddContact : Screen("add_contact?userId={userId}") {
+        fun createRoute(userId: String? = null) = if (userId != null) {
+            "add_contact?userId=$userId"
+        } else {
+            "add_contact"
+        }
+    }
     object ContactDetail : Screen("contact/{contactId}") {
         fun createRoute(contactId: String) = "contact/$contactId"
     }
