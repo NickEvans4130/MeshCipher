@@ -5,6 +5,7 @@ import java.nio.ByteBuffer
 data class MeshMessage(
     val id: String,
     val originDeviceId: String,
+    val originUserId: String,
     val destinationUserId: String,
     val encryptedPayload: ByteArray,
     val timestamp: Long,
@@ -23,16 +24,18 @@ data class MeshMessage(
 
     fun toBytes(): ByteArray {
         val idBytes = id.toByteArray()
-        val originBytes = originDeviceId.toByteArray()
+        val originDeviceBytes = originDeviceId.toByteArray()
+        val originUserBytes = originUserId.toByteArray()
         val destBytes = destinationUserId.toByteArray()
         val pathStr = path.joinToString(",")
         val pathBytes = pathStr.toByteArray()
 
-        // Format: [idLen:2][id][originLen:2][origin][destLen:2][dest]
-        //         [timestamp:8][ttl:4][hopCount:4]
+        // Format: [idLen:2][id][originDeviceLen:2][originDevice][originUserLen:2][originUser]
+        //         [destLen:2][dest][timestamp:8][ttl:4][hopCount:4]
         //         [pathLen:2][path][payloadLen:4][payload]
         val totalSize = 2 + idBytes.size +
-                2 + originBytes.size +
+                2 + originDeviceBytes.size +
+                2 + originUserBytes.size +
                 2 + destBytes.size +
                 8 + 4 + 4 +
                 2 + pathBytes.size +
@@ -41,8 +44,10 @@ data class MeshMessage(
         val buffer = ByteBuffer.allocate(totalSize)
         buffer.putShort(idBytes.size.toShort())
         buffer.put(idBytes)
-        buffer.putShort(originBytes.size.toShort())
-        buffer.put(originBytes)
+        buffer.putShort(originDeviceBytes.size.toShort())
+        buffer.put(originDeviceBytes)
+        buffer.putShort(originUserBytes.size.toShort())
+        buffer.put(originUserBytes)
         buffer.putShort(destBytes.size.toShort())
         buffer.put(destBytes)
         buffer.putLong(timestamp)
@@ -76,9 +81,13 @@ data class MeshMessage(
                 val idBytes = ByteArray(idLen)
                 buffer.get(idBytes)
 
-                val originLen = buffer.short.toInt()
-                val originBytes = ByteArray(originLen)
-                buffer.get(originBytes)
+                val originDeviceLen = buffer.short.toInt()
+                val originDeviceBytes = ByteArray(originDeviceLen)
+                buffer.get(originDeviceBytes)
+
+                val originUserLen = buffer.short.toInt()
+                val originUserBytes = ByteArray(originUserLen)
+                buffer.get(originUserBytes)
 
                 val destLen = buffer.short.toInt()
                 val destBytes = ByteArray(destLen)
@@ -100,7 +109,8 @@ data class MeshMessage(
 
                 MeshMessage(
                     id = String(idBytes),
-                    originDeviceId = String(originBytes),
+                    originDeviceId = String(originDeviceBytes),
+                    originUserId = String(originUserBytes),
                     destinationUserId = String(destBytes),
                     encryptedPayload = payload,
                     timestamp = timestamp,

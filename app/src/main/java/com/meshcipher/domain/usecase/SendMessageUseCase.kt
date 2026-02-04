@@ -40,10 +40,10 @@ class SendMessageUseCase @Inject constructor(
         // Save message locally first
         messageRepository.insertMessage(message)
 
-        // Send via relay server
+        // Send via transport (internet or mesh depending on connection mode)
         // For now we send plaintext base64-encoded; Signal Protocol encryption
         // will be integrated once key exchange is implemented in a later phase.
-        val sendResult = transportManager.getActiveTransport().sendMessage(
+        val sendResult = transportManager.sendWithFallback(
             senderId = senderId,
             recipientId = contact.signalProtocolAddress.name,
             encryptedContent = content.toByteArray()

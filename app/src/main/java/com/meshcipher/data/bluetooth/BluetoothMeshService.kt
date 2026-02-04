@@ -12,7 +12,13 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.meshcipher.R
 import com.meshcipher.data.bluetooth.routing.MeshRouter
+import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.domain.model.MeshMessage
+import com.meshcipher.domain.model.Message
+import com.meshcipher.domain.model.MessageStatus
+import com.meshcipher.domain.repository.ContactRepository
+import com.meshcipher.domain.repository.ConversationRepository
+import com.meshcipher.domain.repository.MessageRepository
 import com.meshcipher.presentation.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -20,9 +26,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.UUID
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -36,6 +44,18 @@ class BluetoothMeshService : Service() {
 
     @Inject
     lateinit var meshRouter: MeshRouter
+
+    @Inject
+    lateinit var identityManager: IdentityManager
+
+    @Inject
+    lateinit var messageRepository: MessageRepository
+
+    @Inject
+    lateinit var conversationRepository: ConversationRepository
+
+    @Inject
+    lateinit var contactRepository: ContactRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -99,11 +119,14 @@ class BluetoothMeshService : Service() {
 
     private suspend fun handleReceivedMessage(message: MeshMessage) {
         val myIdentity = try {
-            // Simple check: is this message for us?
-            // Full identity check requires IdentityManager but service already has mesh components
-            message.destinationUserId
+            identityManager.getIdentity()
         } catch (e: Exception) {
-            Timber.e(e, "Failed to check message destination")
+            Timber.e(e, "Failed to get identity")
+            return
+        }
+
+        if (myIdentity == null) {
+            Timber.w("No identity available, cannot process mesh message")
             return
         }
 
@@ -113,11 +136,58 @@ class BluetoothMeshService : Service() {
             meshRouter.handleIncomingMessage(message, fromDeviceId)
         }
 
-        // If message should be relayed (not for us), forward it
-        if (message.shouldRelay()) {
+        // Check if message is for us
+        if (message.destinationUserId == myIdentity.userId) {
+            Timber.d("Mesh message %s is for us, delivering", message.id)
+            deliverMessageLocally(message)
+        } else if (message.shouldRelay()) {
+            // Not for us - relay to other peers
+            Timber.d("Relaying mesh message %s to destination %s", message.id, message.destinationUserId)
             serviceScope.launch {
                 meshRouter.routeMessage(message)
             }
+        }
+    }
+
+    private suspend fun deliverMessageLocally(meshMessage: MeshMessage) {
+        try {
+            // Decode the message content
+            val content = String(meshMessage.encryptedPayload)
+
+            // Find the sender contact by their user ID
+            val contacts = contactRepository.getAllContacts().first()
+            val senderContact = contacts.find { contact ->
+                contact.signalProtocolAddress.name == meshMessage.originUserId ||
+                contact.id == meshMessage.originUserId
+            }
+
+            if (senderContact == null) {
+                Timber.w("Received mesh message from unknown sender: %s", meshMessage.originUserId)
+                return
+            }
+
+            // Get or create conversation
+            val conversationId = conversationRepository.createOrGetConversation(senderContact.id)
+
+            // Save message
+            val message = Message(
+                id = UUID.randomUUID().toString(),
+                conversationId = conversationId,
+                senderId = senderContact.id,
+                recipientId = "me",
+                content = content,
+                timestamp = meshMessage.timestamp,
+                status = MessageStatus.DELIVERED,
+                isOwnMessage = false
+            )
+
+            messageRepository.insertMessage(message)
+            conversationRepository.incrementUnreadCount(conversationId)
+
+            Timber.d("Delivered mesh message from %s in conversation %s",
+                senderContact.displayName, conversationId)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to deliver mesh message locally")
         }
     }
 

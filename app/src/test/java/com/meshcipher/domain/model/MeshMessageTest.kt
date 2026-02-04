@@ -44,6 +44,7 @@ class MeshMessageTest {
         val original = MeshMessage(
             id = "test-msg-123",
             originDeviceId = "device-abc",
+            originUserId = "user-sender",
             destinationUserId = "user-xyz",
             encryptedPayload = "hello world".toByteArray(),
             timestamp = 1700000000000L,
@@ -58,6 +59,7 @@ class MeshMessageTest {
         assertNotNull(restored)
         assertEquals(original.id, restored!!.id)
         assertEquals(original.originDeviceId, restored.originDeviceId)
+        assertEquals(original.originUserId, restored.originUserId)
         assertEquals(original.destinationUserId, restored.destinationUserId)
         assertArrayEquals(original.encryptedPayload, restored.encryptedPayload)
         assertEquals(original.timestamp, restored.timestamp)
@@ -104,6 +106,7 @@ class MeshMessageTest {
         val message = MeshMessage(
             id = "test",
             originDeviceId = "device",
+            originUserId = "sender",
             destinationUserId = "user",
             encryptedPayload = ByteArray(0),
             timestamp = 0L
@@ -119,6 +122,7 @@ class MeshMessageTest {
     ) = MeshMessage(
         id = id,
         originDeviceId = "origin-device",
+        originUserId = "origin-user",
         destinationUserId = "dest-user",
         encryptedPayload = "test-data".toByteArray(),
         timestamp = System.currentTimeMillis(),

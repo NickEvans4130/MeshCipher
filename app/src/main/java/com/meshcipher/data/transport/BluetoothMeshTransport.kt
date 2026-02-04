@@ -36,6 +36,7 @@ class BluetoothMeshTransport @Inject constructor(
         val meshMessage = MeshMessage(
             id = messageId,
             originDeviceId = identity.deviceId,
+            originUserId = identity.userId,
             destinationUserId = recipientUserId,
             encryptedPayload = encryptedContent,
             timestamp = System.currentTimeMillis(),
