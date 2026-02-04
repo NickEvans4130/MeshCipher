@@ -300,6 +300,6 @@ class GattClientManager @Inject constructor(
     }
 
     companion object {
-        const val CONNECTION_TIMEOUT_MS = 30_000L
+        const val CONNECTION_TIMEOUT_MS = 120_000L
     }
 }

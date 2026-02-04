@@ -1,9 +1,8 @@
 package com.meshcipher.domain.usecase
 
 import android.util.Base64
-import com.meshcipher.data.ipfs.IpfsManager
+import com.meshcipher.data.media.MediaManager
 import com.meshcipher.data.transport.TransportManager
-import com.meshcipher.domain.model.MediaMetadata
 import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
@@ -20,7 +19,7 @@ class SendMessageUseCase @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val contactRepository: ContactRepository,
     private val transportManager: TransportManager,
-    private val ipfsManager: IpfsManager
+    private val mediaManager: MediaManager
 ) {
 
     suspend operator fun invoke(
@@ -61,34 +60,26 @@ class SendMessageUseCase @Inject constructor(
                 put("mediaMetadata", mediaMetadataJson)
             }
 
-            // For P2P: include raw media data so receiver can display it
-            try {
-                val metadata = MediaMetadata.fromJson(mediaMetadataJson)
-                if (metadata != null) {
-                    // Download all chunks and combine into raw media data
-                    val mediaBytes = java.io.ByteArrayOutputStream()
-                    for (cid in metadata.chunkCids) {
-                        val chunkResult = ipfsManager.download(cid)
-                        if (chunkResult.isSuccess) {
-                            mediaBytes.write(chunkResult.getOrThrow())
-                        }
-                    }
-                    if (mediaBytes.size() > 0) {
+            // For P2P: include raw media data from cache so receiver can display it
+            if (mediaId != null && mediaType != null) {
+                try {
+                    val cacheFile = mediaManager.getMediaCacheFile(mediaId, mediaType)
+                    if (cacheFile.exists()) {
+                        val mediaBytes = cacheFile.readBytes()
                         envelope.put("mediaData", Base64.encodeToString(
-                            mediaBytes.toByteArray(), Base64.NO_WRAP))
+                            mediaBytes, Base64.NO_WRAP))
+                        Timber.d("Included %d bytes of media data in envelope", mediaBytes.size)
                     }
 
-                    // Include thumbnail if available
-                    if (metadata.thumbnailCid != null) {
-                        val thumbResult = ipfsManager.download(metadata.thumbnailCid)
-                        if (thumbResult.isSuccess) {
-                            envelope.put("thumbnailData", Base64.encodeToString(
-                                thumbResult.getOrThrow(), Base64.NO_WRAP))
-                        }
+                    val thumbFile = mediaManager.getMediaCacheFile("${mediaId}_thumb", MediaType.PHOTO)
+                    if (thumbFile.exists()) {
+                        val thumbBytes = thumbFile.readBytes()
+                        envelope.put("thumbnailData", Base64.encodeToString(
+                            thumbBytes, Base64.NO_WRAP))
                     }
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to include media data in envelope")
                 }
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to include media data in envelope")
             }
 
             envelope.toString().toByteArray()
