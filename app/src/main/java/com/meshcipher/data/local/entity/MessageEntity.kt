@@ -25,5 +25,8 @@ data class MessageEntity(
     @ColumnInfo(name = "recipient_id") val recipientId: String,
     @ColumnInfo(name = "encrypted_content") val encryptedContent: ByteArray,
     @ColumnInfo(name = "timestamp") val timestamp: Long,
-    @ColumnInfo(name = "status") val status: String
+    @ColumnInfo(name = "status") val status: String,
+    @ColumnInfo(name = "media_id") val mediaId: String? = null,
+    @ColumnInfo(name = "media_type") val mediaType: String? = null,
+    @ColumnInfo(name = "media_metadata_json") val mediaMetadataJson: String? = null
 )

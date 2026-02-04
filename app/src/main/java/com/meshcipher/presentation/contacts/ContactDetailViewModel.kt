@@ -3,7 +3,9 @@ package com.meshcipher.presentation.contacts
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meshcipher.data.local.database.ConversationDao
 import com.meshcipher.domain.model.Contact
+import com.meshcipher.domain.model.MessageExpiryMode
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,7 +22,8 @@ import javax.inject.Inject
 class ContactDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val contactRepository: ContactRepository,
-    private val conversationRepository: ConversationRepository
+    private val conversationRepository: ConversationRepository,
+    private val conversationDao: ConversationDao
 ) : ViewModel() {
 
     private val contactId: String = savedStateHandle.get<String>("contactId")
@@ -48,13 +51,34 @@ class ContactDetailViewModel @Inject constructor(
     private val _isDeleting = MutableStateFlow(false)
     val isDeleting: StateFlow<Boolean> = _isDeleting.asStateFlow()
 
+    private val _conversationExpiryMode = MutableStateFlow<String?>(null)
+    val conversationExpiryMode: StateFlow<String?> = _conversationExpiryMode.asStateFlow()
+
     init {
+        loadConversationExpiryMode()
         viewModelScope.launch {
             contact.collect { c ->
                 if (c != null && !_isEditing.value) {
                     _editName.value = c.displayName
                     _editUserId.value = c.signalProtocolAddress.name
                 }
+            }
+        }
+    }
+
+    private fun loadConversationExpiryMode() {
+        viewModelScope.launch {
+            val conversation = conversationDao.getConversationByContactId(contactId)
+            _conversationExpiryMode.value = conversation?.messageExpiryMode
+        }
+    }
+
+    fun setConversationExpiryMode(mode: MessageExpiryMode?) {
+        viewModelScope.launch {
+            val conversation = conversationDao.getConversationByContactId(contactId)
+            if (conversation != null) {
+                conversationDao.setMessageExpiryMode(conversation.id, mode?.name)
+                _conversationExpiryMode.value = mode?.name
             }
         }
     }

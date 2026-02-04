@@ -27,4 +27,7 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteAllMessagesInConversation(conversationId: String)
+
+    @Query("DELETE FROM messages WHERE conversation_id = :conversationId AND timestamp < :cutoffTimestamp")
+    suspend fun deleteExpiredMessages(conversationId: String, cutoffTimestamp: Long)
 }
