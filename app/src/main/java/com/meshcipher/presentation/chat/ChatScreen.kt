@@ -27,8 +27,10 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val contact by viewModel.contact.collectAsState()
     val messageInput by viewModel.messageInput.collectAsState()
+    val sendingState by viewModel.sendingState.collectAsState()
 
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -36,7 +38,19 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(sendingState) {
+        if (sendingState is SendingState.Error) {
+            val error = (sendingState as SendingState.Error).message
+            snackbarHostState.showSnackbar(
+                message = "Send failed: $error",
+                duration = SnackbarDuration.Long
+            )
+            viewModel.clearSendingState()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(contact?.displayName ?: "Loading...") },

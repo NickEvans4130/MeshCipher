@@ -118,6 +118,9 @@ class BluetoothMeshService : Service() {
     }
 
     private suspend fun handleReceivedMessage(message: MeshMessage) {
+        Timber.d("Received mesh message %s from %s to %s",
+            message.id, message.originUserId, message.destinationUserId)
+
         val myIdentity = try {
             identityManager.getIdentity()
         } catch (e: Exception) {
@@ -130,6 +133,9 @@ class BluetoothMeshService : Service() {
             return
         }
 
+        Timber.d("My userId: %s, message destinationUserId: %s",
+            myIdentity.userId, message.destinationUserId)
+
         // Update routing info from incoming message
         if (message.path.isNotEmpty()) {
             val fromDeviceId = message.path.last()
@@ -138,13 +144,18 @@ class BluetoothMeshService : Service() {
 
         // Check if message is for us
         if (message.destinationUserId == myIdentity.userId) {
-            Timber.d("Mesh message %s is for us, delivering", message.id)
+            Timber.d("Mesh message %s is for us! Delivering...", message.id)
             deliverMessageLocally(message)
-        } else if (message.shouldRelay()) {
-            // Not for us - relay to other peers
-            Timber.d("Relaying mesh message %s to destination %s", message.id, message.destinationUserId)
-            serviceScope.launch {
-                meshRouter.routeMessage(message)
+        } else {
+            Timber.d("Message not for us (dest=%s, me=%s)",
+                message.destinationUserId, myIdentity.userId)
+            if (message.shouldRelay()) {
+                Timber.d("Relaying mesh message %s to destination %s", message.id, message.destinationUserId)
+                serviceScope.launch {
+                    meshRouter.routeMessage(message)
+                }
+            } else {
+                Timber.d("Message TTL expired, not relaying")
             }
         }
     }

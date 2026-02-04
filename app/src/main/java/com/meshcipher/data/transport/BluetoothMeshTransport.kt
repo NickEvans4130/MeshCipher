@@ -25,12 +25,22 @@ class BluetoothMeshTransport @Inject constructor(
         recipientUserId: String,
         encryptedContent: ByteArray
     ): Result<String> {
-        if (!isAvailable()) {
-            return Result.failure(Exception("Bluetooth mesh not available"))
+        val btEnabled = bluetoothMeshManager.isBluetoothEnabled()
+        val peers = bluetoothMeshManager.discoveredPeers.value
+        Timber.d("Mesh send: BT enabled=%s, peers=%d, recipient=%s",
+            btEnabled, peers.size, recipientUserId)
+
+        if (!btEnabled) {
+            return Result.failure(Exception("Bluetooth not enabled"))
+        }
+        if (peers.isEmpty()) {
+            return Result.failure(Exception("No mesh peers discovered"))
         }
 
         val identity = identityManager.getIdentity()
             ?: return Result.failure(Exception("No identity"))
+
+        Timber.d("Sending from user %s to %s", identity.userId, recipientUserId)
 
         val messageId = UUID.randomUUID().toString()
         val meshMessage = MeshMessage(
@@ -44,20 +54,22 @@ class BluetoothMeshTransport @Inject constructor(
             hopCount = 0
         )
 
+        Timber.d("Routing mesh message %s (%d bytes)", messageId, encryptedContent.size)
         val routeResult = meshRouter.routeMessage(meshMessage)
         return if (routeResult.isSuccess) {
-            Timber.d("Mesh message %s routed for %s", messageId, recipientUserId)
+            Timber.d("Mesh message %s routed successfully", messageId)
             Result.success(messageId)
         } else {
-            Timber.e("Mesh routing failed for %s: %s",
-                messageId, routeResult.exceptionOrNull()?.message)
-            Result.failure(routeResult.exceptionOrNull() ?: Exception("Mesh routing failed"))
+            val error = routeResult.exceptionOrNull()?.message ?: "Unknown error"
+            Timber.e("Mesh routing failed for %s: %s", messageId, error)
+            Result.failure(routeResult.exceptionOrNull() ?: Exception("Mesh routing failed: $error"))
         }
     }
 
     fun isAvailable(): Boolean {
-        return bluetoothMeshManager.isBluetoothEnabled() &&
-                bluetoothMeshManager.discoveredPeers.value.isNotEmpty()
+        val btEnabled = bluetoothMeshManager.isBluetoothEnabled()
+        val hasPeers = bluetoothMeshManager.discoveredPeers.value.isNotEmpty()
+        return btEnabled && hasPeers
     }
 
     fun isRecipientReachable(recipientUserId: String): Boolean {
