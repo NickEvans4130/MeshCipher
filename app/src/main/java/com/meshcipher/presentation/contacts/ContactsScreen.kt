@@ -77,7 +77,7 @@ fun ContactsScreen(
                         contact = contact,
                         onClick = { onContactClick(contact.id) }
                     )
-                    HorizontalDivider()
+                    Divider()
                 }
             }
         }

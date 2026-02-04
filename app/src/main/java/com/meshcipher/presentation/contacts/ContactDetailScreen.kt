@@ -130,7 +130,7 @@ fun ContactDetailScreen(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = (contact?.displayName?.firstOrNull() ?: "?").uppercase(),
+                                text = (contact?.displayName?.firstOrNull()?.uppercase() ?: "?"),
                                 style = MaterialTheme.typography.displaySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
