@@ -101,6 +101,8 @@ class WifiDirectViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        wifiDirectManager.cleanup()
+        // Only stop discovery when leaving the screen, don't cleanup the connection
+        // The connection should persist for messaging
+        wifiDirectManager.stopDiscovery()
     }
 }
