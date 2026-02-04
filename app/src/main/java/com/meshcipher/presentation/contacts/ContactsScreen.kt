@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.Contact
@@ -28,6 +29,7 @@ fun ContactsScreen(
     viewModel: ContactsViewModel = hiltViewModel()
 ) {
     val contacts by viewModel.contacts.collectAsState()
+    val unreadCounts by viewModel.unreadCounts.collectAsState()
 
     Scaffold(
         topBar = {
@@ -75,6 +77,7 @@ fun ContactsScreen(
                 items(contacts) { contact ->
                     ContactItem(
                         contact = contact,
+                        unreadCount = unreadCounts[contact.id] ?: 0,
                         onClick = { onContactClick(contact.id) }
                     )
                     Divider()
@@ -84,9 +87,11 @@ fun ContactsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactItem(
     contact: Contact,
+    unreadCount: Int = 0,
     onClick: () -> Unit
 ) {
     Row(
@@ -96,17 +101,31 @@ fun ContactItem(
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.primaryContainer
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = contact.displayName.firstOrNull()?.uppercase() ?: "?",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+        Box {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = contact.displayName.firstOrNull()?.uppercase() ?: "?",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            if (unreadCount > 0) {
+                Badge(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    containerColor = MaterialTheme.colorScheme.error
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
         }
 
@@ -115,7 +134,8 @@ fun ContactItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.displayName,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
             )
 
             Spacer(modifier = Modifier.height(4.dp))

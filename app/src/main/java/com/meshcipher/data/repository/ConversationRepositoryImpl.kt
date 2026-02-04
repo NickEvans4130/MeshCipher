@@ -8,6 +8,7 @@ import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.repository.ConversationRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 
@@ -111,6 +112,12 @@ class ConversationRepositoryImpl @Inject constructor(
         conversation?.let {
             conversationDao.deleteConversation(it)
             messageDao.deleteAllMessagesInConversation(conversationId)
+        }
+    }
+
+    override fun getUnreadCountsByContact(): Flow<Map<String, Int>> {
+        return conversationDao.getAllConversations().map { conversations ->
+            conversations.associate { it.contactId to it.unreadCount }
         }
     }
 }

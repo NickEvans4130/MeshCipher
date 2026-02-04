@@ -35,6 +35,8 @@ fun ChatScreen(
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
+            // Mark as read when new messages arrive while viewing
+            viewModel.markAsRead()
         }
     }
 
