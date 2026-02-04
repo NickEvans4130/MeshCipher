@@ -77,7 +77,7 @@ fun ChatScreen(
             state = listState,
             reverseLayout = true
         ) {
-            items(messages.reversed()) { message ->
+            items(messages) { message ->
                 MessageBubble(message = message)
                 Spacer(modifier = Modifier.height(8.dp))
             }
