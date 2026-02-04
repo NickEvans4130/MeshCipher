@@ -70,6 +70,19 @@ class ChatViewModel @Inject constructor(
     private val _sendingState = MutableStateFlow<SendingState>(SendingState.Idle)
     val sendingState = _sendingState.asStateFlow()
 
+    init {
+        // Mark conversation as read when chat is opened
+        viewModelScope.launch {
+            conversationRepository.markConversationAsRead(conversationId)
+        }
+    }
+
+    fun markAsRead() {
+        viewModelScope.launch {
+            conversationRepository.markConversationAsRead(conversationId)
+        }
+    }
+
     fun updateMessageInput(text: String) {
         _messageInput.value = text
     }

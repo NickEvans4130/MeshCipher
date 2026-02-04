@@ -12,4 +12,5 @@ interface ConversationRepository {
     suspend fun incrementUnreadCount(conversationId: String)
     suspend fun togglePin(conversationId: String)
     suspend fun deleteConversation(conversationId: String)
+    fun getUnreadCountsByContact(): Flow<Map<String, Int>>
 }

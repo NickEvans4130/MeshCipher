@@ -195,6 +195,9 @@ class BluetoothMeshService : Service() {
             messageRepository.insertMessage(message)
             conversationRepository.incrementUnreadCount(conversationId)
 
+            // Show notification
+            showMessageNotification(senderContact.displayName, content, conversationId)
+
             Timber.d("Delivered mesh message from %s in conversation %s",
                 senderContact.displayName, conversationId)
         } catch (e: Exception) {
@@ -212,7 +215,11 @@ class BluetoothMeshService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // Service notification channel (low priority)
+            val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Mesh Network",
                 NotificationManager.IMPORTANCE_LOW
@@ -220,10 +227,47 @@ class BluetoothMeshService : Service() {
                 description = "Bluetooth mesh networking status"
                 setShowBadge(false)
             }
-            val notificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(serviceChannel)
+
+            // Message notification channel (high priority)
+            val messageChannel = NotificationChannel(
+                MESSAGE_CHANNEL_ID,
+                "Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "New message notifications"
+                setShowBadge(true)
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(messageChannel)
         }
+    }
+
+    private fun showMessageNotification(senderName: String, messageContent: String, conversationId: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("conversationId", conversationId)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            conversationId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+            .setContentTitle(senderName)
+            .setContentText(messageContent)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(conversationId.hashCode(), notification)
     }
 
     private fun createNotification(): Notification {
@@ -247,6 +291,7 @@ class BluetoothMeshService : Service() {
     companion object {
         const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "mesh_network"
+        private const val MESSAGE_CHANNEL_ID = "messages"
         private const val MAINTENANCE_INTERVAL_MS = 30_000L
 
         fun start(context: Context) {

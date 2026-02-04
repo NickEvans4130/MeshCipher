@@ -35,6 +35,8 @@ fun ChatScreen(
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
+            // Mark as read when new messages arrive while viewing
+            viewModel.markAsRead()
         }
     }
 
@@ -77,7 +79,7 @@ fun ChatScreen(
             state = listState,
             reverseLayout = true
         ) {
-            items(messages.reversed()) { message ->
+            items(messages) { message ->
                 MessageBubble(message = message)
                 Spacer(modifier = Modifier.height(8.dp))
             }
