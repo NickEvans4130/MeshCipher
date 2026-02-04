@@ -71,3 +71,6 @@ Thumbs.db
 # Secrets
 secrets.properties
 keystore.properties
+
+# Documentation
+MeshCipher_Phase_*.md
