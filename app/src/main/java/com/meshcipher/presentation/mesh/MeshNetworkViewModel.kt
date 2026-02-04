@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.BluetoothMeshService
 import com.meshcipher.data.bluetooth.routing.MeshRouter
+import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.domain.model.MeshPeer
 import com.meshcipher.util.PermissionUtils
@@ -24,7 +25,8 @@ class MeshNetworkViewModel @Inject constructor(
     private val application: Application,
     private val bluetoothMeshManager: BluetoothMeshManager,
     private val meshRouter: MeshRouter,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val identityManager: IdentityManager
 ) : AndroidViewModel(application) {
 
     val discoveredPeers: StateFlow<List<MeshPeer>> = bluetoothMeshManager.discoveredPeers
@@ -58,8 +60,19 @@ class MeshNetworkViewModel @Inject constructor(
     private val _hasPermissions = MutableStateFlow(false)
     val hasPermissions: StateFlow<Boolean> = _hasPermissions.asStateFlow()
 
+    private val _myUserId = MutableStateFlow<String?>(null)
+    val myUserId: StateFlow<String?> = _myUserId.asStateFlow()
+
     init {
         checkPermissions()
+        loadMyUserId()
+    }
+
+    private fun loadMyUserId() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val identity = identityManager.getIdentity()
+            _myUserId.value = identity?.userId
+        }
     }
 
     fun checkPermissions() {
