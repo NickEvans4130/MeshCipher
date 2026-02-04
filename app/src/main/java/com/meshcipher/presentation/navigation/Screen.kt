@@ -8,6 +8,9 @@ sealed class Screen(val route: String) {
     }
     object Contacts : Screen("contacts")
     object AddContact : Screen("add_contact")
+    object ContactDetail : Screen("contact/{contactId}") {
+        fun createRoute(contactId: String) = "contact/$contactId"
+    }
     object Settings : Screen("settings")
     object ShareContact : Screen("share_contact")
     object ScanContact : Screen("scan_contact")

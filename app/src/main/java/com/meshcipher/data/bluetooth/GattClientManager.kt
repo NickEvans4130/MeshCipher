@@ -1,12 +1,14 @@
 package com.meshcipher.data.bluetooth
 
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.os.Build
 import com.meshcipher.domain.model.MeshMessage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -51,12 +53,21 @@ class GattClientManager @Inject constructor(
                             status: Int,
                             newState: Int
                         ) {
+                            Timber.d("Client onConnectionStateChange: address=%s, status=%d, newState=%d",
+                                bluetoothAddress, status, newState)
                             when (newState) {
                                 BluetoothProfile.STATE_CONNECTED -> {
-                                    Timber.d("Connected to %s, discovering services", bluetoothAddress)
+                                    Timber.d("Connected to %s (status=%d), requesting MTU then discovering services",
+                                        bluetoothAddress, status)
                                     try {
-                                        gatt.discoverServices()
+                                        // Request larger MTU for mesh messages
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                            gatt.requestMtu(512)
+                                        } else {
+                                            gatt.discoverServices()
+                                        }
                                     } catch (e: SecurityException) {
+                                        Timber.e(e, "Security exception requesting MTU/discovering services")
                                         closeGatt(gatt, bluetoothAddress)
                                         if (continuation.isActive) {
                                             continuation.resume(Result.failure(e))
@@ -64,19 +75,35 @@ class GattClientManager @Inject constructor(
                                     }
                                 }
                                 BluetoothProfile.STATE_DISCONNECTED -> {
+                                    Timber.d("Disconnected from %s with status %d", bluetoothAddress, status)
                                     closeGatt(gatt, bluetoothAddress)
                                     if (continuation.isActive) {
-                                        if (status != BluetoothGatt.GATT_SUCCESS) {
-                                            continuation.resume(
-                                                Result.failure(Exception("Connection failed: status $status"))
-                                            )
-                                        }
+                                        continuation.resume(
+                                            Result.failure(Exception("Disconnected before write completed: status $status"))
+                                        )
                                     }
+                                }
+                                else -> {
+                                    Timber.d("Unknown connection state %d for %s", newState, bluetoothAddress)
+                                }
+                            }
+                        }
+
+                        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                            Timber.d("MTU changed to %d for %s (status=%d)", mtu, bluetoothAddress, status)
+                            try {
+                                gatt.discoverServices()
+                            } catch (e: SecurityException) {
+                                Timber.e(e, "Security exception discovering services after MTU change")
+                                closeGatt(gatt, bluetoothAddress)
+                                if (continuation.isActive) {
+                                    continuation.resume(Result.failure(e))
                                 }
                             }
                         }
 
                         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                            Timber.d("Services discovered on %s with status %d", bluetoothAddress, status)
                             if (status != BluetoothGatt.GATT_SUCCESS) {
                                 closeGatt(gatt, bluetoothAddress)
                                 if (continuation.isActive) {
@@ -87,8 +114,16 @@ class GattClientManager @Inject constructor(
                                 return
                             }
 
+                            val services = gatt.services
+                            Timber.d("Found %d services on %s", services.size, bluetoothAddress)
+                            services.forEach { svc ->
+                                Timber.d("  Service: %s", svc.uuid)
+                            }
+
                             val service = gatt.getService(BluetoothMeshManager.SERVICE_UUID)
                             if (service == null) {
+                                Timber.e("MeshCipher service %s not found on %s",
+                                    BluetoothMeshManager.SERVICE_UUID, bluetoothAddress)
                                 closeGatt(gatt, bluetoothAddress)
                                 if (continuation.isActive) {
                                     continuation.resume(
@@ -102,6 +137,7 @@ class GattClientManager @Inject constructor(
                                 BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID
                             )
                             if (characteristic == null) {
+                                Timber.e("Message characteristic not found on %s", bluetoothAddress)
                                 closeGatt(gatt, bluetoothAddress)
                                 if (continuation.isActive) {
                                     continuation.resume(
@@ -110,21 +146,34 @@ class GattClientManager @Inject constructor(
                                 }
                                 return
                             }
+                            Timber.d("Found message characteristic on %s", bluetoothAddress)
 
                             val messageBytes = message.toBytes()
-                            characteristic.value = messageBytes
+                            Timber.d("Writing %d bytes to %s", messageBytes.size, bluetoothAddress)
 
                             try {
-                                val writeResult = gatt.writeCharacteristic(characteristic)
+                                val writeResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    gatt.writeCharacteristic(
+                                        characteristic,
+                                        messageBytes,
+                                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                                    ) == BluetoothGatt.GATT_SUCCESS
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    characteristic.value = messageBytes
+                                    @Suppress("DEPRECATION")
+                                    gatt.writeCharacteristic(characteristic)
+                                }
                                 if (!writeResult) {
                                     closeGatt(gatt, bluetoothAddress)
                                     if (continuation.isActive) {
                                         continuation.resume(
-                                            Result.failure(Exception("Write characteristic failed"))
+                                            Result.failure(Exception("Write characteristic initiation failed"))
                                         )
                                     }
                                 }
                             } catch (e: SecurityException) {
+                                Timber.e(e, "Security exception writing to %s", bluetoothAddress)
                                 closeGatt(gatt, bluetoothAddress)
                                 if (continuation.isActive) {
                                     continuation.resume(Result.failure(e))
@@ -152,16 +201,30 @@ class GattClientManager @Inject constructor(
                     }
 
                     try {
-                        val gatt = device.connectGatt(context, false, callback)
+                        Timber.d("Initiating GATT connection to %s (timeout=%dms)", bluetoothAddress, CONNECTION_TIMEOUT_MS)
+                        val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            device.connectGatt(
+                                context,
+                                false,
+                                callback,
+                                BluetoothDevice.TRANSPORT_LE
+                            )
+                        } else {
+                            device.connectGatt(context, false, callback)
+                        }
                         if (gatt != null) {
+                            Timber.d("GATT connection initiated to %s, waiting for callback...", bluetoothAddress)
                             activeConnections[bluetoothAddress] = gatt
                             continuation.invokeOnCancellation {
+                                Timber.d("GATT connection to %s was cancelled", bluetoothAddress)
                                 closeGatt(gatt, bluetoothAddress)
                             }
                         } else {
+                            Timber.e("Failed to initiate GATT connection to %s - connectGatt returned null", bluetoothAddress)
                             continuation.resume(Result.failure(Exception("Failed to initiate GATT connection")))
                         }
                     } catch (e: SecurityException) {
+                        Timber.e(e, "Security exception connecting to %s", bluetoothAddress)
                         continuation.resume(Result.failure(e))
                     }
                 }

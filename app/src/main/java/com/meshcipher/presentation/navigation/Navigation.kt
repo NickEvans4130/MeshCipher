@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meshcipher.presentation.chat.ChatScreen
 import com.meshcipher.presentation.contacts.AddContactScreen
+import com.meshcipher.presentation.contacts.ContactDetailScreen
 import com.meshcipher.presentation.contacts.ContactsScreen
 import com.meshcipher.presentation.conversations.ConversationsScreen
 import com.meshcipher.presentation.mesh.MeshNetworkScreen
@@ -52,11 +53,35 @@ fun MeshCipherNavigation(
         composable(Screen.Contacts.route) {
             ContactsScreen(
                 onBackClick = { navController.popBackStack() },
+                onConversationStart = { conversationId ->
+                    navController.navigate(Screen.Chat.createRoute(conversationId)) {
+                        popUpTo(Screen.Conversations.route)
+                    }
+                },
                 onContactClick = { contactId ->
-                    // Will be implemented when message sending is added
+                    navController.navigate(Screen.ContactDetail.createRoute(contactId))
                 },
                 onAddContactClick = {
                     navController.navigate(Screen.AddContact.route)
+                }
+            )
+        }
+
+        composable(
+            route = Screen.ContactDetail.route,
+            arguments = listOf(
+                navArgument("contactId") { type = NavType.StringType }
+            )
+        ) {
+            ContactDetailScreen(
+                onBackClick = { navController.popBackStack() },
+                onStartConversation = { conversationId ->
+                    navController.navigate(Screen.Chat.createRoute(conversationId)) {
+                        popUpTo(Screen.Conversations.route)
+                    }
+                },
+                onContactDeleted = {
+                    navController.popBackStack()
                 }
             )
         }

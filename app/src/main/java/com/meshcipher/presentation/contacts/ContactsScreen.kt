@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import com.meshcipher.domain.model.Contact
 @Composable
 fun ContactsScreen(
     onBackClick: () -> Unit,
+    onConversationStart: (String) -> Unit,
     onContactClick: (String) -> Unit,
     onAddContactClick: () -> Unit,
     viewModel: ContactsViewModel = hiltViewModel()
@@ -110,7 +112,7 @@ fun ContactItem(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.displayName,
                 style = MaterialTheme.typography.titleMedium
@@ -124,5 +126,11 @@ fun ContactItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = "View details",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

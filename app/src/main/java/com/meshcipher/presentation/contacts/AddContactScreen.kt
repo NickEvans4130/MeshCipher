@@ -53,10 +53,10 @@ fun AddContactScreen(
             OutlinedTextField(
                 value = identifier,
                 onValueChange = { viewModel.updateIdentifier(it) },
-                label = { Text("Identifier") },
+                label = { Text("User ID") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                supportingText = { Text("Enter contact's unique identifier") }
+                supportingText = { Text("Enter their User ID from Settings > Account") }
             )
 
             Spacer(modifier = Modifier.height(24.dp))

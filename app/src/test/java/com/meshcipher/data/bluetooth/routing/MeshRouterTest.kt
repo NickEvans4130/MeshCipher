@@ -176,6 +176,7 @@ class MeshRouterTest {
         val message = MeshMessage(
             id = "incoming-1",
             originDeviceId = "remote-device",
+            originUserId = "remote-user",
             destinationUserId = "my-user",
             encryptedPayload = ByteArray(10),
             timestamp = System.currentTimeMillis(),
@@ -193,12 +194,14 @@ class MeshRouterTest {
     private fun createTestMessage(
         id: String,
         originDeviceId: String = "sender-device",
+        originUserId: String = "sender-user",
         destinationUserId: String = "recipient-user",
         hopCount: Int = 0,
         ttl: Int = 5
     ): MeshMessage = MeshMessage(
         id = id,
         originDeviceId = originDeviceId,
+        originUserId = originUserId,
         destinationUserId = destinationUserId,
         encryptedPayload = "test-payload".toByteArray(),
         timestamp = System.currentTimeMillis(),

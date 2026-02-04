@@ -59,10 +59,18 @@ class MeshRouter @Inject constructor(
         }
 
         // No route or next hop unreachable: flood to all direct neighbors
+        val allPeers = bluetoothMeshManager.discoveredPeers.value
+        Timber.d("All discovered peers: %d", allPeers.size)
+        allPeers.forEach { peer ->
+            Timber.d("  Peer: %s, inRange=%s, hopCount=%d, lastSeen=%d ms ago",
+                peer.bluetoothAddress, peer.isInRange, peer.hopCount,
+                System.currentTimeMillis() - peer.lastSeen)
+        }
+
         val neighbors = getDirectNeighbors()
         if (neighbors.isEmpty()) {
-            Timber.w("No neighbors available for message %s", message.id)
-            return@withContext Result.failure(Exception("No neighbors available"))
+            Timber.w("No neighbors in range for message %s (total peers: %d)", message.id, allPeers.size)
+            return@withContext Result.failure(Exception("No neighbors in range"))
         }
 
         Timber.d("Flooding message %s to %d neighbors", message.id, neighbors.size)
@@ -74,8 +82,12 @@ class MeshRouter @Inject constructor(
             // Don't send back to origin or nodes already in path
             if (neighbor.deviceId == message.originDeviceId ||
                 forwarded.path.contains(neighbor.deviceId)
-            ) continue
+            ) {
+                Timber.d("Skipping neighbor %s (origin or in path)", neighbor.bluetoothAddress)
+                continue
+            }
 
+            Timber.d("Sending to neighbor %s", neighbor.bluetoothAddress)
             val result = sendToPeer(neighbor, forwarded)
             if (result.isSuccess) {
                 anySuccess = true
