@@ -98,6 +98,12 @@ fun MeshCipherNavigation(
                 onBackClick = { navController.popBackStack() },
                 onMeshNetworkClick = {
                     navController.navigate(Screen.MeshNetwork.route)
+                },
+                onShareContactClick = {
+                    navController.navigate(Screen.ShareContact.route)
+                },
+                onScanContactClick = {
+                    navController.navigate(Screen.ScanContact.route)
                 }
             )
         }
