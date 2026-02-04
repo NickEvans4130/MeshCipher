@@ -264,6 +264,17 @@ class MediaManager @Inject constructor(
 
             _uploadProgress.value = 1f
 
+            // Save raw data to cache for local display
+            val cacheFile = getMediaCacheFile(mediaId, mediaType)
+            cacheFile.writeBytes(data)
+            Timber.d("Cached media locally: %s (%d bytes)", cacheFile.absolutePath, data.size)
+
+            // Save thumbnail to cache
+            if (thumbnail != null) {
+                val thumbFile = getMediaCacheFile("${mediaId}_thumb", MediaType.PHOTO)
+                thumbFile.writeBytes(thumbnail)
+            }
+
             val metadata = MediaMetadata(
                 id = mediaId,
                 mediaType = mediaType,

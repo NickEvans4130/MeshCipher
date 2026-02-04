@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
@@ -26,13 +27,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.meshcipher.domain.model.MediaMetadata
 import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -282,6 +289,8 @@ fun VoiceRecordingBar(
 
 @Composable
 fun MessageBubble(message: Message) {
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isOwnMessage)
@@ -301,22 +310,29 @@ fun MessageBubble(message: Message) {
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Column(
-                modifier = Modifier.padding(12.dp)
+                modifier = Modifier.padding(
+                    start = if (message.isMediaMessage && message.mediaType == MediaType.PHOTO) 4.dp else 12.dp,
+                    end = if (message.isMediaMessage && message.mediaType == MediaType.PHOTO) 4.dp else 12.dp,
+                    top = if (message.isMediaMessage && message.mediaType == MediaType.PHOTO) 4.dp else 12.dp,
+                    bottom = 12.dp
+                )
             ) {
-                // Show media indicator if it's a media message
                 if (message.isMediaMessage) {
-                    MediaIndicator(message)
-                    Spacer(modifier = Modifier.height(4.dp))
+                    MediaContent(message, context)
                 }
 
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (message.isOwnMessage)
-                        MaterialTheme.colorScheme.onPrimary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (!message.isMediaMessage || (message.mediaType != MediaType.PHOTO && message.mediaType != MediaType.VIDEO)) {
+                    if (!message.isMediaMessage) {
+                        Text(
+                            text = message.content,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (message.isOwnMessage)
+                                MaterialTheme.colorScheme.onPrimary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -327,7 +343,9 @@ fun MessageBubble(message: Message) {
                         MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.End)
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(horizontal = if (message.isMediaMessage && message.mediaType == MediaType.PHOTO) 8.dp else 0.dp)
                 )
             }
         }
@@ -335,38 +353,199 @@ fun MessageBubble(message: Message) {
 }
 
 @Composable
-private fun MediaIndicator(message: Message) {
-    val icon = when (message.mediaType) {
-        MediaType.PHOTO -> Icons.Default.Image
-        MediaType.VIDEO -> Icons.Default.Videocam
-        MediaType.AUDIO -> Icons.Default.Mic
-        else -> Icons.Default.AttachFile
-    }
-
+private fun MediaContent(message: Message, context: android.content.Context) {
+    val mediaId = message.mediaId ?: return
+    val mediaType = message.mediaType ?: return
     val metadata = message.mediaMetadata
-    val sizeText = metadata?.let { formatFileSize(it.fileSize) } ?: ""
-    val durationText = metadata?.durationMs?.let { formatDuration(it) } ?: ""
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val extension = mediaType.getFileExtension()
+    val cacheFile = File(context.filesDir, "media_cache/$mediaId$extension")
+
+    when (mediaType) {
+        MediaType.PHOTO -> {
+            if (cacheFile.exists()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(cacheFile)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Photo",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp, max = 250.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                PhotoPlaceholder(message)
+            }
+        }
+        MediaType.VIDEO -> {
+            if (cacheFile.exists()) {
+                // Show thumbnail with play icon overlay
+                val thumbFile = File(context.filesDir, "media_cache/${mediaId}_thumb.jpg")
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp, max = 250.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (thumbFile.exists()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(thumbFile)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Video thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {}
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Play video",
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+                if (metadata?.durationMs != null) {
+                    Text(
+                        text = formatDuration(metadata.durationMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (message.isOwnMessage)
+                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            } else {
+                PhotoPlaceholder(message)
+            }
+        }
+        MediaType.AUDIO -> {
+            AudioMessageContent(message, metadata)
+        }
+        MediaType.FILE -> {
+            FileIndicator(message, metadata)
+        }
+    }
+}
+
+@Composable
+private fun PhotoPlaceholder(message: Message) {
+    val metadata = message.mediaMetadata
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(4.dp)
+    ) {
         Icon(
-            imageVector = icon,
-            contentDescription = message.mediaType?.name,
-            modifier = Modifier.size(20.dp),
+            imageVector = if (message.mediaType == MediaType.VIDEO)
+                Icons.Default.Videocam else Icons.Default.Image,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = if (message.isOwnMessage)
+                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = metadata?.let { formatFileSize(it.fileSize) } ?: message.content,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (message.isOwnMessage)
+                MaterialTheme.colorScheme.onPrimary
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun AudioMessageContent(message: Message, metadata: MediaMetadata?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Mic,
+            contentDescription = "Voice note",
+            modifier = Modifier.size(24.dp),
+            tint = if (message.isOwnMessage)
+                MaterialTheme.colorScheme.onPrimary
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        // Simple waveform placeholder bar
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = if (message.isOwnMessage)
+                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f)
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        ) {}
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = metadata?.durationMs?.let { formatDuration(it) } ?: "0:00",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (message.isOwnMessage)
+                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+        )
+    }
+}
+
+@Composable
+private fun FileIndicator(message: Message, metadata: MediaMetadata?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.AttachFile,
+            contentDescription = "File",
+            modifier = Modifier.size(24.dp),
             tint = if (message.isOwnMessage)
                 MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
             else
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
-        Spacer(modifier = Modifier.width(4.dp))
-        if (sizeText.isNotEmpty()) {
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
             Text(
-                text = if (durationText.isNotEmpty()) "$sizeText - $durationText" else sizeText,
-                style = MaterialTheme.typography.labelSmall,
+                text = metadata?.fileName ?: "File",
+                style = MaterialTheme.typography.bodyMedium,
                 color = if (message.isOwnMessage)
-                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                    MaterialTheme.colorScheme.onPrimary
                 else
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (metadata != null) {
+                Text(
+                    text = formatFileSize(metadata.fileSize),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (message.isOwnMessage)
+                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

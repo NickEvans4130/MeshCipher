@@ -11,14 +11,18 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.meshcipher.R
+import android.util.Base64
 import com.meshcipher.data.bluetooth.routing.MeshRouter
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.media.MediaManager
+import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.MeshMessage
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
+import org.json.JSONObject
 import com.meshcipher.presentation.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +60,9 @@ class BluetoothMeshService : Service() {
 
     @Inject
     lateinit var contactRepository: ContactRepository
+
+    @Inject
+    lateinit var mediaManager: MediaManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -162,8 +169,7 @@ class BluetoothMeshService : Service() {
 
     private suspend fun deliverMessageLocally(meshMessage: MeshMessage) {
         try {
-            // Decode the message content
-            val content = String(meshMessage.encryptedPayload)
+            val rawContent = String(meshMessage.encryptedPayload)
 
             // Find the sender contact by their user ID
             val contacts = contactRepository.getAllContacts().first()
@@ -180,7 +186,58 @@ class BluetoothMeshService : Service() {
             // Get or create conversation
             val conversationId = conversationRepository.createOrGetConversation(senderContact.id)
 
-            // Save message
+            // Try to parse as media message envelope
+            var content = rawContent
+            var mediaId: String? = null
+            var mediaType: MediaType? = null
+            var mediaMetadataJson: String? = null
+
+            try {
+                val envelope = JSONObject(rawContent)
+                if (envelope.has("mediaId")) {
+                    content = envelope.optString("content", rawContent)
+                    mediaId = if (envelope.has("mediaId")) envelope.getString("mediaId") else null
+                    mediaType = if (envelope.has("mediaType")) {
+                        runCatching { MediaType.valueOf(envelope.getString("mediaType")) }.getOrNull()
+                    } else null
+                    mediaMetadataJson = if (envelope.has("mediaMetadata")) envelope.getString("mediaMetadata") else null
+                    Timber.d("Received media message: id=%s, type=%s", mediaId, mediaType)
+
+                    // Save received media data to local cache for display
+                    val mId = mediaId
+                    val mType = mediaType
+                    if (mId != null && mType != null) {
+                        if (envelope.has("mediaData")) {
+                            try {
+                                val mediaDataB64 = envelope.getString("mediaData")
+                                val mediaBytes = Base64.decode(mediaDataB64, Base64.NO_WRAP)
+                                val cacheFile = mediaManager.getMediaCacheFile(mId, mType)
+                                cacheFile.writeBytes(mediaBytes)
+                                Timber.d("Saved received media to cache: %s (%d bytes)",
+                                    cacheFile.absolutePath, mediaBytes.size)
+                            } catch (e2: Exception) {
+                                Timber.w(e2, "Failed to save received media data")
+                            }
+                        }
+
+                        if (envelope.has("thumbnailData")) {
+                            try {
+                                val thumbDataB64 = envelope.getString("thumbnailData")
+                                val thumbBytes = Base64.decode(thumbDataB64, Base64.NO_WRAP)
+                                val thumbFile = mediaManager.getMediaCacheFile(
+                                    "${mId}_thumb", MediaType.PHOTO)
+                                thumbFile.writeBytes(thumbBytes)
+                                Timber.d("Saved received thumbnail to cache: %s", thumbFile.absolutePath)
+                            } catch (e2: Exception) {
+                                Timber.w(e2, "Failed to save received thumbnail data")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Not a JSON envelope, treat as plain text
+            }
+
             val message = Message(
                 id = UUID.randomUUID().toString(),
                 conversationId = conversationId,
@@ -189,7 +246,10 @@ class BluetoothMeshService : Service() {
                 content = content,
                 timestamp = meshMessage.timestamp,
                 status = MessageStatus.DELIVERED,
-                isOwnMessage = false
+                isOwnMessage = false,
+                mediaId = mediaId,
+                mediaType = mediaType,
+                mediaMetadataJson = mediaMetadataJson
             )
 
             messageRepository.insertMessage(message)

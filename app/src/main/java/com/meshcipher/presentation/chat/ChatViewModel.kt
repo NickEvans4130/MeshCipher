@@ -11,7 +11,6 @@ import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.MediaMetadata
 import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
-import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
@@ -21,7 +20,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.util.UUID
 import javax.inject.Inject
 
 sealed class SendingState {
@@ -196,24 +194,25 @@ class ChatViewModel @Inject constructor(
                 MediaType.FILE -> "[File]"
             }
 
-            val message = Message(
-                id = UUID.randomUUID().toString(),
+            val sendResult = sendMessageUseCase(
                 conversationId = conversationId,
+                contactId = conv.contactId,
                 senderId = "me",
-                recipientId = conv.contactId,
                 content = caption,
-                timestamp = System.currentTimeMillis(),
-                status = MessageStatus.SENT,
-                isOwnMessage = true,
                 mediaId = metadata.id,
                 mediaType = mediaType,
                 mediaMetadataJson = metadata.toJson()
             )
 
-            messageRepository.insertMessage(message)
-            conversationRepository.markConversationAsRead(conversationId)
-            _sendingState.value = SendingState.Sent
-            Timber.d("Media message saved: %s (%s)", metadata.id, mediaType)
+            if (sendResult.isSuccess) {
+                conversationRepository.markConversationAsRead(conversationId)
+                _sendingState.value = SendingState.Sent
+                Timber.d("Media message sent: %s (%s)", metadata.id, mediaType)
+            } else {
+                _sendingState.value = SendingState.Error(
+                    sendResult.exceptionOrNull()?.message ?: "Media send failed"
+                )
+            }
         } else {
             _sendingState.value = SendingState.Error(
                 result.exceptionOrNull()?.message ?: "Media send failed"

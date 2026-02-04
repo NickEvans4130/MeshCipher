@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +40,13 @@ class GattServerManager @Inject constructor(
     val receivedMessages: SharedFlow<MeshMessage> = _receivedMessages.asSharedFlow()
 
     private val connectedDevices = CopyOnWriteArraySet<BluetoothDevice>()
+
+    // Reassembly buffer for chunked BLE writes per device
+    private data class ReassemblyBuffer(
+        val stream: ByteArrayOutputStream = ByteArrayOutputStream(),
+        var expectedLength: Int = -1
+    )
+    private val reassemblyBuffers = ConcurrentHashMap<String, ReassemblyBuffer>()
 
     @Volatile
     private var serviceAdded = false
@@ -57,6 +67,7 @@ class GattServerManager @Inject constructor(
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Timber.d("GATT device disconnected: %s", device.address)
                     connectedDevices.remove(device)
+                    reassemblyBuffers.remove(device.address)
                 }
             }
         }
@@ -84,8 +95,8 @@ class GattServerManager @Inject constructor(
 
             when (characteristic.uuid) {
                 BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID -> {
-                    Timber.d("Received message write on MESSAGE characteristic from %s", device.address)
-                    handleMessageReceived(device, value)
+                    Timber.d("Received message write on MESSAGE characteristic from %s (%d bytes)",
+                        device.address, value.size)
 
                     if (responseNeeded) {
                         try {
@@ -100,6 +111,8 @@ class GattServerManager @Inject constructor(
                             Timber.w(e, "Missing permission to send GATT response")
                         }
                     }
+
+                    handleChunkedWrite(device, value)
                 }
                 else -> {
                     if (responseNeeded) {
@@ -209,13 +222,50 @@ class GattServerManager @Inject constructor(
 
     fun getConnectedDeviceCount(): Int = connectedDevices.size
 
+    private fun handleChunkedWrite(device: BluetoothDevice, value: ByteArray) {
+        val address = device.address
+        val buffer = reassemblyBuffers.getOrPut(address) { ReassemblyBuffer() }
+
+        // If we haven't read the length header yet
+        if (buffer.expectedLength < 0 && buffer.stream.size() == 0 && value.size >= 4) {
+            // First chunk: extract the 4-byte length prefix
+            buffer.expectedLength = ByteBuffer.wrap(value, 0, 4).int
+            buffer.stream.write(value, 4, value.size - 4)
+            Timber.d("Reassembly started for %s: expecting %d bytes, got %d in first chunk",
+                address, buffer.expectedLength, value.size - 4)
+        } else if (buffer.expectedLength < 0) {
+            // First chunk too small, append and try to read length later
+            buffer.stream.write(value)
+            if (buffer.stream.size() >= 4) {
+                val lenBytes = buffer.stream.toByteArray()
+                buffer.expectedLength = ByteBuffer.wrap(lenBytes, 0, 4).int
+                val remaining = lenBytes.copyOfRange(4, lenBytes.size)
+                buffer.stream.reset()
+                buffer.stream.write(remaining)
+            }
+        } else {
+            buffer.stream.write(value)
+        }
+
+        Timber.d("Reassembly buffer for %s: %d/%d bytes",
+            address, buffer.stream.size(), buffer.expectedLength)
+
+        // Check if we have the complete message
+        if (buffer.expectedLength >= 0 && buffer.stream.size() >= buffer.expectedLength) {
+            val completeData = buffer.stream.toByteArray().copyOf(buffer.expectedLength)
+            reassemblyBuffers.remove(address)
+            Timber.d("Reassembly complete for %s: %d bytes", address, completeData.size)
+            handleMessageReceived(device, completeData)
+        }
+    }
+
     private fun handleMessageReceived(device: BluetoothDevice, data: ByteArray) {
         val message = MeshMessage.fromBytes(data)
         if (message != null) {
             scope.launch {
                 _receivedMessages.emit(message)
             }
-            Timber.d("Received mesh message %s from %s", message.id, device.address)
+            Timber.d("Received mesh message %s from %s (%d bytes)", message.id, device.address, data.size)
         } else {
             Timber.w("Failed to parse mesh message from %s (%d bytes)", device.address, data.size)
         }

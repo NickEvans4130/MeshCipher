@@ -16,6 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
+import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -89,8 +90,14 @@ class GattClientManager @Inject constructor(
                             }
                         }
 
+                        private var pendingChunks: MutableList<ByteArray> = mutableListOf()
+                        private var currentChunkIndex = 0
+                        private var writeCharacteristic: BluetoothGattCharacteristic? = null
+                        private var negotiatedMtu = 20 // default BLE MTU
+
                         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
                             Timber.d("MTU changed to %d for %s (status=%d)", mtu, bluetoothAddress, status)
+                            negotiatedMtu = mtu
                             try {
                                 gatt.discoverServices()
                             } catch (e: SecurityException) {
@@ -149,31 +156,71 @@ class GattClientManager @Inject constructor(
                             Timber.d("Found message characteristic on %s", bluetoothAddress)
 
                             val messageBytes = message.toBytes()
-                            Timber.d("Writing %d bytes to %s", messageBytes.size, bluetoothAddress)
+                            // Frame the message: [4-byte length][payload]
+                            val framedBytes = ByteBuffer.allocate(4 + messageBytes.size)
+                                .putInt(messageBytes.size)
+                                .put(messageBytes)
+                                .array()
+                            val chunkSize = (negotiatedMtu - 3).coerceAtLeast(20)
+                            Timber.d("Writing %d bytes (%d framed) to %s (MTU=%d, chunkSize=%d)",
+                                messageBytes.size, framedBytes.size, bluetoothAddress, negotiatedMtu, chunkSize)
+
+                            // Split into chunks if needed
+                            writeCharacteristic = characteristic
+                            pendingChunks = framedBytes.toList()
+                                .chunked(chunkSize)
+                                .map { it.toByteArray() }
+                                .toMutableList()
+                            currentChunkIndex = 0
+
+                            Timber.d("Split message into %d chunks", pendingChunks.size)
+                            writeNextChunk(gatt, characteristic)
+                        }
+
+                        private fun writeNextChunk(
+                            gatt: BluetoothGatt,
+                            characteristic: BluetoothGattCharacteristic
+                        ) {
+                            if (currentChunkIndex >= pendingChunks.size) {
+                                // All chunks sent
+                                Timber.d("All %d chunks written to %s for message %s",
+                                    pendingChunks.size, bluetoothAddress, message.id)
+                                closeGatt(gatt, bluetoothAddress)
+                                if (continuation.isActive) {
+                                    continuation.resume(Result.success(Unit))
+                                }
+                                return
+                            }
+
+                            val chunk = pendingChunks[currentChunkIndex]
+                            Timber.d("Writing chunk %d/%d (%d bytes) to %s",
+                                currentChunkIndex + 1, pendingChunks.size, chunk.size, bluetoothAddress)
 
                             try {
                                 val writeResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     gatt.writeCharacteristic(
                                         characteristic,
-                                        messageBytes,
+                                        chunk,
                                         BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                                     ) == BluetoothGatt.GATT_SUCCESS
                                 } else {
                                     @Suppress("DEPRECATION")
-                                    characteristic.value = messageBytes
+                                    characteristic.value = chunk
                                     @Suppress("DEPRECATION")
                                     gatt.writeCharacteristic(characteristic)
                                 }
                                 if (!writeResult) {
+                                    Timber.e("Chunk %d write initiation failed", currentChunkIndex)
                                     closeGatt(gatt, bluetoothAddress)
                                     if (continuation.isActive) {
                                         continuation.resume(
-                                            Result.failure(Exception("Write characteristic initiation failed"))
+                                            Result.failure(Exception("Write chunk $currentChunkIndex failed"))
                                         )
                                     }
                                 }
                             } catch (e: SecurityException) {
-                                Timber.e(e, "Security exception writing to %s", bluetoothAddress)
+                                Timber.e(e, "Security exception writing chunk %d to %s",
+                                    currentChunkIndex, bluetoothAddress)
                                 closeGatt(gatt, bluetoothAddress)
                                 if (continuation.isActive) {
                                     continuation.resume(Result.failure(e))
@@ -186,14 +233,15 @@ class GattClientManager @Inject constructor(
                             characteristic: BluetoothGattCharacteristic,
                             status: Int
                         ) {
-                            closeGatt(gatt, bluetoothAddress)
-                            if (continuation.isActive) {
-                                if (status == BluetoothGatt.GATT_SUCCESS) {
-                                    Timber.d("Message %s written to %s", message.id, bluetoothAddress)
-                                    continuation.resume(Result.success(Unit))
-                                } else {
+                            if (status == BluetoothGatt.GATT_SUCCESS) {
+                                currentChunkIndex++
+                                writeNextChunk(gatt, characteristic)
+                            } else {
+                                Timber.e("Chunk %d write failed with status %d", currentChunkIndex, status)
+                                closeGatt(gatt, bluetoothAddress)
+                                if (continuation.isActive) {
                                     continuation.resume(
-                                        Result.failure(Exception("Write failed: status $status"))
+                                        Result.failure(Exception("Write failed at chunk $currentChunkIndex: status $status"))
                                     )
                                 }
                             }
