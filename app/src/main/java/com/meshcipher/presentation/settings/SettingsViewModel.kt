@@ -10,6 +10,7 @@ import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
+import com.meshcipher.domain.model.MessageExpiryMode
 import com.meshcipher.util.PermissionUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,14 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = false
+        )
+
+    val messageExpiryMode: StateFlow<MessageExpiryMode> = appPreferences.messageExpiryMode
+        .map { name -> MessageExpiryMode.fromNameOrDefault(name) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = MessageExpiryMode.NEVER
         )
 
     private val _hasBluetoothPermissions = MutableStateFlow(false)
@@ -115,4 +124,10 @@ class SettingsViewModel @Inject constructor(
     fun isBluetoothSupported(): Boolean = bluetoothMeshManager.isBluetoothSupported()
 
     fun getRequiredPermissions(): Array<String> = PermissionUtils.getAllMeshPermissions()
+
+    fun setMessageExpiryMode(mode: MessageExpiryMode) {
+        viewModelScope.launch {
+            appPreferences.setMessageExpiryMode(mode.name)
+        }
+    }
 }

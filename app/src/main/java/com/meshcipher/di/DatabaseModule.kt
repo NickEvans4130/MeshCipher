@@ -34,6 +34,10 @@ object DatabaseModule {
             "meshcipher.db"
         )
             .openHelperFactory(factory)
+            .addMigrations(
+                MeshCipherDatabase.MIGRATION_1_3,
+                MeshCipherDatabase.MIGRATION_2_3
+            )
             .build()
     }
 

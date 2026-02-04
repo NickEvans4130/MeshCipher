@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.meshcipher.domain.model.MessageExpiryMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,8 +35,10 @@ fun ContactDetailScreen(
     val isEditing by viewModel.isEditing.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
+    val conversationExpiryMode by viewModel.conversationExpiryMode.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showExpiryDropdown by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -225,6 +228,71 @@ fun ContactDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Send Message")
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Disappearing Messages Card
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Disappearing Messages",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Override the device default for this contact",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            ExposedDropdownMenuBox(
+                                expanded = showExpiryDropdown,
+                                onExpandedChange = { showExpiryDropdown = it }
+                            ) {
+                                val displayValue = if (conversationExpiryMode == null) {
+                                    "Use Device Default"
+                                } else {
+                                    MessageExpiryMode.fromName(conversationExpiryMode)?.displayName ?: "Use Device Default"
+                                }
+
+                                OutlinedTextField(
+                                    value = displayValue,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    trailingIcon = {
+                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = showExpiryDropdown)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor()
+                                )
+
+                                ExposedDropdownMenu(
+                                    expanded = showExpiryDropdown,
+                                    onDismissRequest = { showExpiryDropdown = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Use Device Default") },
+                                        onClick = {
+                                            viewModel.setConversationExpiryMode(null)
+                                            showExpiryDropdown = false
+                                        }
+                                    )
+                                    MessageExpiryMode.entries.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = { Text(mode.displayName) },
+                                            onClick = {
+                                                viewModel.setConversationExpiryMode(mode)
+                                                showExpiryDropdown = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.weight(1f))

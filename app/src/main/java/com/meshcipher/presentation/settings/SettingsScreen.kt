@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
+import com.meshcipher.domain.model.MessageExpiryMode
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,9 +55,11 @@ fun SettingsScreen(
     val meshEnabled by viewModel.meshEnabled.collectAsState()
     val hasBluetoothPermissions by viewModel.hasBluetoothPermissions.collectAsState()
     val userId by viewModel.userId.collectAsState()
+    val messageExpiryMode by viewModel.messageExpiryMode.collectAsState()
     val context = LocalContext.current
     var showCopiedMessage by remember { mutableStateOf(false) }
     var hasNotificationPermission by remember { mutableStateOf(viewModel.hasNotificationPermission()) }
+    var showExpiryDropdown by remember { mutableStateOf(false) }
 
     LaunchedEffect(showCopiedMessage) {
         if (showCopiedMessage) {
@@ -427,6 +430,78 @@ fun SettingsScreen(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Privacy Section
+            Text(
+                text = "Privacy",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Disappearing Messages",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Set a default timer for all new messages",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    ExposedDropdownMenuBox(
+                        expanded = showExpiryDropdown,
+                        onExpandedChange = { showExpiryDropdown = it }
+                    ) {
+                        OutlinedTextField(
+                            value = messageExpiryMode.displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = showExpiryDropdown)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = showExpiryDropdown,
+                            onDismissRequest = { showExpiryDropdown = false }
+                        ) {
+                            MessageExpiryMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.displayName) },
+                                    onClick = {
+                                        viewModel.setMessageExpiryMode(mode)
+                                        showExpiryDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = when (messageExpiryMode) {
+                            MessageExpiryMode.NEVER -> "Messages will be kept indefinitely"
+                            MessageExpiryMode.ON_APP_CLOSE -> "Messages will be deleted when the app is closed"
+                            else -> "Messages will automatically delete after ${messageExpiryMode.displayName.lowercase()}"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
