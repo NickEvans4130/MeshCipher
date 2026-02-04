@@ -21,4 +21,5 @@ sealed class Screen(val route: String) {
     object ShareContact : Screen("share_contact")
     object ScanContact : Screen("scan_contact")
     object MeshNetwork : Screen("mesh_network")
+    object WifiDirect : Screen("wifi_direct")
 }

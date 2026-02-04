@@ -27,7 +27,8 @@ class TransportManager @Inject constructor(
     private val torManager: TorManager,
     private val gson: Gson,
     private val retrofit: Retrofit,
-    private val bluetoothMeshTransport: BluetoothMeshTransport
+    private val bluetoothMeshTransport: BluetoothMeshTransport,
+    private val wifiDirectTransport: WifiDirectTransport
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -64,7 +65,11 @@ class TransportManager @Inject constructor(
 
     fun getBluetoothMeshTransport(): BluetoothMeshTransport = bluetoothMeshTransport
 
+    fun getWifiDirectTransport(): WifiDirectTransport = wifiDirectTransport
+
     fun isMeshAvailable(): Boolean = bluetoothMeshTransport.isAvailable()
+
+    fun isWifiDirectAvailable(): Boolean = wifiDirectTransport.isAvailable()
 
     suspend fun sendWithFallback(
         senderId: String,
@@ -73,8 +78,13 @@ class TransportManager @Inject constructor(
     ): Result<String> {
         val mode = currentMode.get()
 
-        // P2P_ONLY: mesh only
+        // P2P_ONLY: Try WiFi Direct first (better range/bandwidth), then Bluetooth mesh
         if (mode == ConnectionMode.P2P_ONLY) {
+            if (wifiDirectTransport.isAvailable()) {
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+                if (wifiResult.isSuccess) return wifiResult
+                Timber.d("WiFi Direct failed, trying Bluetooth mesh")
+            }
             return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
         }
 
@@ -83,7 +93,7 @@ class TransportManager @Inject constructor(
         val internetResult = try {
             transport.sendMessage(senderId, recipientId, encryptedContent)
         } catch (e: Exception) {
-            Timber.w(e, "Internet transport failed, trying mesh fallback")
+            Timber.w(e, "Internet transport failed, trying offline fallback")
             Result.failure(e)
         }
 
@@ -91,7 +101,14 @@ class TransportManager @Inject constructor(
             return internetResult
         }
 
-        // Fallback to Bluetooth mesh
+        // Fallback to WiFi Direct (better for larger messages)
+        if (wifiDirectTransport.isAvailable()) {
+            Timber.d("Falling back to WiFi Direct for %s", recipientId)
+            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+            if (wifiResult.isSuccess) return wifiResult
+        }
+
+        // Final fallback to Bluetooth mesh
         if (bluetoothMeshTransport.isAvailable()) {
             Timber.d("Falling back to Bluetooth mesh for %s", recipientId)
             return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)

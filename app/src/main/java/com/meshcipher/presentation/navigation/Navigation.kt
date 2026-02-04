@@ -16,6 +16,7 @@ import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
+import com.meshcipher.presentation.wifidirect.WifiDirectScreen
 
 @Composable
 fun MeshCipherNavigation(
@@ -115,6 +116,9 @@ fun MeshCipherNavigation(
                 },
                 onScanContactClick = {
                     navController.navigate(Screen.ScanContact.route)
+                },
+                onWifiDirectClick = {
+                    navController.navigate(Screen.WifiDirect.route)
                 }
             )
         }
@@ -139,6 +143,12 @@ fun MeshCipherNavigation(
                         popUpTo(Screen.ScanContact.route) { inclusive = true }
                     }
                 },
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.WifiDirect.route) {
+            WifiDirectScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }
