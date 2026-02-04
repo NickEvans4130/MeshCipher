@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.BluetoothMeshService
+import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
@@ -26,7 +27,8 @@ class SettingsViewModel @Inject constructor(
     private val application: Application,
     private val appPreferences: AppPreferences,
     private val torManager: TorManager,
-    private val bluetoothMeshManager: BluetoothMeshManager
+    private val bluetoothMeshManager: BluetoothMeshManager,
+    private val identityManager: IdentityManager
 ) : AndroidViewModel(application) {
 
     val connectionMode: StateFlow<ConnectionMode> = appPreferences.connectionMode
@@ -60,8 +62,19 @@ class SettingsViewModel @Inject constructor(
     private val _hasBluetoothPermissions = MutableStateFlow(false)
     val hasBluetoothPermissions: StateFlow<Boolean> = _hasBluetoothPermissions.asStateFlow()
 
+    private val _userId = MutableStateFlow<String?>(null)
+    val userId: StateFlow<String?> = _userId.asStateFlow()
+
     init {
         checkBluetoothPermissions()
+        loadUserId()
+    }
+
+    private fun loadUserId() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val identity = identityManager.getIdentity()
+            _userId.value = identity?.userId
+        }
     }
 
     fun setConnectionMode(mode: ConnectionMode) {
