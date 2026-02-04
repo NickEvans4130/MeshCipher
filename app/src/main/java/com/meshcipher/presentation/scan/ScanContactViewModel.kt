@@ -20,6 +20,7 @@ class ScanContactViewModel @Inject constructor() : ViewModel() {
     val scannedCard = _scannedCard.asStateFlow()
 
     private var isProcessing = false
+    private var hasScanned = false
 
     private val scannerOptions = BarcodeScannerOptions.Builder()
         .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -29,7 +30,7 @@ class ScanContactViewModel @Inject constructor() : ViewModel() {
 
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     fun analyzeImage(imageProxy: ImageProxy, onScanned: (ContactCard) -> Unit) {
-        if (isProcessing) {
+        if (isProcessing || hasScanned) {
             imageProxy.close()
             return
         }
@@ -50,8 +51,10 @@ class ScanContactViewModel @Inject constructor() : ViewModel() {
                     val rawValue = barcode.rawValue ?: continue
 
                     val contactCard = ContactCard.fromQRString(rawValue)
-                    if (contactCard != null) {
+                    if (contactCard != null && !hasScanned) {
+                        hasScanned = true
                         _scannedCard.value = contactCard
+                        Timber.d("QR code scanned: userId=%s", contactCard.userId)
                         onScanned(contactCard)
                         return@addOnSuccessListener
                     }

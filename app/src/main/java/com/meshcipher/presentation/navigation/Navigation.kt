@@ -86,10 +86,21 @@ fun MeshCipherNavigation(
             )
         }
 
-        composable(Screen.AddContact.route) {
+        composable(
+            route = Screen.AddContact.route,
+            arguments = listOf(
+                navArgument("userId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) {
             AddContactScreen(
                 onBackClick = { navController.popBackStack() },
-                onContactAdded = { navController.popBackStack() }
+                onContactAdded = {
+                    navController.popBackStack(Screen.Settings.route, false)
+                }
             )
         }
 
@@ -98,6 +109,12 @@ fun MeshCipherNavigation(
                 onBackClick = { navController.popBackStack() },
                 onMeshNetworkClick = {
                     navController.navigate(Screen.MeshNetwork.route)
+                },
+                onShareContactClick = {
+                    navController.navigate(Screen.ShareContact.route)
+                },
+                onScanContactClick = {
+                    navController.navigate(Screen.ScanContact.route)
                 }
             )
         }
@@ -117,8 +134,10 @@ fun MeshCipherNavigation(
         composable(Screen.ScanContact.route) {
             ScanContactScreen(
                 onContactScanned = { contactCard ->
-                    // Contact scanned, pop back
-                    navController.popBackStack()
+                    // Navigate to AddContact with pre-filled userId
+                    navController.navigate(Screen.AddContact.createRoute(contactCard.userId)) {
+                        popUpTo(Screen.ScanContact.route) { inclusive = true }
+                    }
                 },
                 onBackClick = { navController.popBackStack() }
             )

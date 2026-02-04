@@ -30,4 +30,27 @@ object PermissionUtils {
                     PackageManager.PERMISSION_GRANTED
         }
     }
+
+    fun getNotificationPermission(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            emptyArray()
+        }
+    }
+
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Permission not needed on older versions
+        }
+    }
+
+    fun getAllMeshPermissions(): Array<String> {
+        return getRequiredBluetoothPermissions() + getNotificationPermission()
+    }
 }

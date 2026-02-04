@@ -1,5 +1,6 @@
 package com.meshcipher.presentation.contacts
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshcipher.domain.model.Contact
@@ -14,14 +15,17 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AddContactViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val contactRepository: ContactRepository
 ) : ViewModel() {
 
     private val _name = MutableStateFlow("")
     val name = _name.asStateFlow()
 
-    private val _identifier = MutableStateFlow("")
+    private val _identifier = MutableStateFlow(savedStateHandle.get<String>("userId") ?: "")
     val identifier = _identifier.asStateFlow()
+
+    val isFromQRScan: Boolean = savedStateHandle.get<String>("userId") != null
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()

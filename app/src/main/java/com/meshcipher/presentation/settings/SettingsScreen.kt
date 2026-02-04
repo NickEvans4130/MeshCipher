@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -42,6 +45,8 @@ import kotlinx.coroutines.delay
 fun SettingsScreen(
     onBackClick: () -> Unit,
     onMeshNetworkClick: () -> Unit = {},
+    onShareContactClick: () -> Unit = {},
+    onScanContactClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -51,6 +56,7 @@ fun SettingsScreen(
     val userId by viewModel.userId.collectAsState()
     val context = LocalContext.current
     var showCopiedMessage by remember { mutableStateOf(false) }
+    var hasNotificationPermission by remember { mutableStateOf(viewModel.hasNotificationPermission()) }
 
     LaunchedEffect(showCopiedMessage) {
         if (showCopiedMessage) {
@@ -63,6 +69,7 @@ fun SettingsScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         viewModel.checkBluetoothPermissions()
+        hasNotificationPermission = viewModel.hasNotificationPermission()
     }
 
     LaunchedEffect(Unit) {
@@ -149,6 +156,76 @@ fun SettingsScreen(
                             text = "Copied to clipboard",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // QR Code buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onShareContactClick)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.QrCode,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "My QR Code",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Share with others",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onScanContactClick)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.QrCodeScanner,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Scan QR Code",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Add a contact",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -272,6 +349,30 @@ fun SettingsScreen(
                             onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
                         ) {
                             Text("Grant Permissions")
+                        }
+                    }
+
+                    if (!hasNotificationPermission) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Enable notifications to be alerted of new messages",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(
+                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                        ) {
+                            Text("Enable Notifications")
                         }
                     }
 

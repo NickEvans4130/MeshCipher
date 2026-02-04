@@ -108,9 +108,11 @@ class SettingsViewModel @Inject constructor(
         _hasBluetoothPermissions.value = PermissionUtils.hasBluetoothPermissions(application)
     }
 
+    fun hasNotificationPermission(): Boolean = PermissionUtils.hasNotificationPermission(application)
+
     fun isBluetoothEnabled(): Boolean = bluetoothMeshManager.isBluetoothEnabled()
 
     fun isBluetoothSupported(): Boolean = bluetoothMeshManager.isBluetoothSupported()
 
-    fun getRequiredPermissions(): Array<String> = PermissionUtils.getRequiredBluetoothPermissions()
+    fun getRequiredPermissions(): Array<String> = PermissionUtils.getAllMeshPermissions()
 }
