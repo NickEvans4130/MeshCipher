@@ -52,8 +52,10 @@ fun MeshCipherNavigation(
         composable(Screen.Contacts.route) {
             ContactsScreen(
                 onBackClick = { navController.popBackStack() },
-                onContactClick = { contactId ->
-                    // Will be implemented when message sending is added
+                onConversationStart = { conversationId ->
+                    navController.navigate(Screen.Chat.createRoute(conversationId)) {
+                        popUpTo(Screen.Conversations.route)
+                    }
                 },
                 onAddContactClick = {
                     navController.navigate(Screen.AddContact.route)

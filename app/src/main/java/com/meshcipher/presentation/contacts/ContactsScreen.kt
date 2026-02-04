@@ -21,7 +21,7 @@ import com.meshcipher.domain.model.Contact
 @Composable
 fun ContactsScreen(
     onBackClick: () -> Unit,
-    onContactClick: (String) -> Unit,
+    onConversationStart: (String) -> Unit,
     onAddContactClick: () -> Unit,
     viewModel: ContactsViewModel = hiltViewModel()
 ) {
@@ -73,7 +73,11 @@ fun ContactsScreen(
                 items(contacts) { contact ->
                     ContactItem(
                         contact = contact,
-                        onClick = { onContactClick(contact.id) }
+                        onClick = {
+                            viewModel.startConversation(contact.id) { conversationId ->
+                                onConversationStart(conversationId)
+                            }
+                        }
                     )
                     Divider()
                 }
