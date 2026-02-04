@@ -2,6 +2,7 @@ package com.meshcipher.data.repository
 
 import com.meshcipher.data.local.database.MessageDao
 import com.meshcipher.data.local.entity.MessageEntity
+import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.MessageRepository
@@ -43,7 +44,10 @@ class MessageRepositoryImpl @Inject constructor(
             content = String(encryptedContent),
             timestamp = timestamp,
             status = MessageStatus.valueOf(status),
-            isOwnMessage = senderId == "me" // TODO: Get actual user ID
+            isOwnMessage = senderId == "me", // TODO: Get actual user ID
+            mediaId = mediaId,
+            mediaType = mediaType?.let { runCatching { MediaType.valueOf(it) }.getOrNull() },
+            mediaMetadataJson = mediaMetadataJson
         )
     }
 
@@ -55,7 +59,10 @@ class MessageRepositoryImpl @Inject constructor(
             recipientId = recipientId,
             encryptedContent = content.toByteArray(),
             timestamp = timestamp,
-            status = status.name
+            status = status.name,
+            mediaId = mediaId,
+            mediaType = mediaType?.name,
+            mediaMetadataJson = mediaMetadataJson
         )
     }
 }
