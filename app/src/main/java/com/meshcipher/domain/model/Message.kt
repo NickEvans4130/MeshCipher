@@ -10,8 +10,16 @@ data class Message(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val status: MessageStatus,
-    val isOwnMessage: Boolean = false
-)
+    val isOwnMessage: Boolean = false,
+    val mediaId: String? = null,
+    val mediaType: MediaType? = null,
+    val mediaMetadataJson: String? = null
+) {
+    val isMediaMessage: Boolean get() = mediaId != null
+
+    val mediaMetadata: MediaMetadata?
+        get() = mediaMetadataJson?.let { MediaMetadata.fromJson(it) }
+}
 
 enum class MessageStatus {
     PENDING,
