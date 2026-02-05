@@ -88,7 +88,18 @@ class TransportManager @Inject constructor(
             return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
         }
 
-        // Try primary internet transport first
+        // Always try WiFi Direct first when available - direct P2P is preferred
+        // over routing through a relay server
+        if (wifiDirectTransport.isAvailable()) {
+            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+            if (wifiResult.isSuccess) {
+                Timber.d("Sent via WiFi Direct to %s", recipientId)
+                return wifiResult
+            }
+            Timber.d("WiFi Direct send failed, trying internet transport")
+        }
+
+        // Try internet transport
         val transport = getActiveTransport()
         val internetResult = try {
             transport.sendMessage(senderId, recipientId, encryptedContent)
@@ -99,13 +110,6 @@ class TransportManager @Inject constructor(
 
         if (internetResult.isSuccess) {
             return internetResult
-        }
-
-        // Fallback to WiFi Direct (better for larger messages)
-        if (wifiDirectTransport.isAvailable()) {
-            Timber.d("Falling back to WiFi Direct for %s", recipientId)
-            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
-            if (wifiResult.isSuccess) return wifiResult
         }
 
         // Final fallback to Bluetooth mesh

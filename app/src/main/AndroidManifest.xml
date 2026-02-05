@@ -38,6 +38,11 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
 
+    <!-- Package visibility for Orbot (Android 11+) -->
+    <queries>
+        <package android:name="org.torproject.android" />
+    </queries>
+
     <application
         android:name=".MeshCipherApplication"
         android:allowBackup="true"

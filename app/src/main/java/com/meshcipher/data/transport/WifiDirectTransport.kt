@@ -3,11 +3,17 @@ package com.meshcipher.data.transport
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.wifidirect.WifiDirectManager
 import com.meshcipher.data.wifidirect.WifiDirectSocketManager
+import com.meshcipher.domain.model.Message
+import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.model.WifiDirectMessage
+import com.meshcipher.domain.repository.ContactRepository
+import com.meshcipher.domain.repository.ConversationRepository
+import com.meshcipher.domain.repository.MessageRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.UUID
@@ -18,7 +24,10 @@ import javax.inject.Singleton
 class WifiDirectTransport @Inject constructor(
     private val wifiDirectManager: WifiDirectManager,
     private val socketManager: WifiDirectSocketManager,
-    private val identityManager: IdentityManager
+    private val identityManager: IdentityManager,
+    private val contactRepository: ContactRepository,
+    private val conversationRepository: ConversationRepository,
+    private val messageRepository: MessageRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -42,6 +51,97 @@ class WifiDirectTransport @Inject constructor(
                     }
                 }
             }
+        }
+
+        // Collect and handle incoming messages
+        scope.launch {
+            collectIncomingMessages()
+        }
+    }
+
+    private suspend fun collectIncomingMessages() {
+        socketManager.receivedMessages.collect { message ->
+            handleReceivedMessage(message)
+        }
+    }
+
+    private suspend fun handleReceivedMessage(message: WifiDirectMessage) {
+        val myIdentity = try {
+            identityManager.getIdentity()
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to get identity")
+            return
+        }
+
+        if (myIdentity == null) {
+            Timber.w("No identity available, cannot process WiFi Direct message")
+            return
+        }
+
+        Timber.d("Received WiFi Direct message from %s to %s", message.senderId, message.recipientId)
+
+        // Check if message is for us
+        if (message.recipientId == myIdentity.userId) {
+            when (message) {
+                is WifiDirectMessage.TextMessage -> {
+                    deliverTextMessageLocally(message)
+                }
+                is WifiDirectMessage.FileTransfer -> {
+                    Timber.d("Received file transfer metadata: ${message.fileName}")
+                    // File handling to be implemented
+                }
+                is WifiDirectMessage.FileChunk -> {
+                    Timber.d("Received file chunk: ${message.fileId} [${message.chunkIndex}]")
+                    // File handling to be implemented
+                }
+                is WifiDirectMessage.Acknowledgment -> {
+                    Timber.d("Received acknowledgment for message: ${message.messageId}")
+                }
+            }
+        } else {
+            Timber.d("Message not for us (dest=%s, me=%s)", message.recipientId, myIdentity.userId)
+        }
+    }
+
+    private suspend fun deliverTextMessageLocally(wifiDirectMessage: WifiDirectMessage.TextMessage) {
+        try {
+            // Decode the message content
+            val content = String(wifiDirectMessage.encryptedContent)
+
+            // Find the sender contact by their user ID
+            val contacts = contactRepository.getAllContacts().first()
+            val senderContact = contacts.find { contact ->
+                contact.signalProtocolAddress.name == wifiDirectMessage.senderId ||
+                contact.id == wifiDirectMessage.senderId
+            }
+
+            if (senderContact == null) {
+                Timber.w("Received WiFi Direct message from unknown sender: %s", wifiDirectMessage.senderId)
+                return
+            }
+
+            // Get or create conversation
+            val conversationId = conversationRepository.createOrGetConversation(senderContact.id)
+
+            // Save message
+            val message = Message(
+                id = UUID.randomUUID().toString(),
+                conversationId = conversationId,
+                senderId = senderContact.id,
+                recipientId = "me",
+                content = content,
+                timestamp = wifiDirectMessage.timestamp,
+                status = MessageStatus.DELIVERED,
+                isOwnMessage = false
+            )
+
+            messageRepository.insertMessage(message)
+            conversationRepository.incrementUnreadCount(conversationId)
+
+            Timber.d("Delivered WiFi Direct message from %s in conversation %s",
+                senderContact.displayName, conversationId)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to deliver WiFi Direct message locally")
         }
     }
 
