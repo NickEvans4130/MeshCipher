@@ -6,30 +6,40 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    - cron: '0 6 * * 1' # Weekly on Monday at 6am UTC
+    - cron: '0 6 * * 1'
+
+# Fixes Token-Permissions High Alert
+permissions:
+  contents: read
 
 jobs:
   gitleaks:
     name: Secret Scanning
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Pinned actions/checkout@v4.1.1
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
         with:
           fetch-depth: 0
 
+      # Pinned gitleaks/gitleaks-action@v2.3.2
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@f69040c1170742ef01391d4410a08e0689332e73
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy:
     name: Vulnerability Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Required for upload-sarif
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
 
+      # Pinned aquasecurity/trivy-action@master (SHA as of Feb 2026)
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@18f2510ee30ff97215100063237936184db4a883
         with:
           scan-type: fs
           scan-ref: .
@@ -39,8 +49,9 @@ jobs:
           format: sarif
           output: trivy-results.sarif
 
+      # Pinned github/codeql-action/upload-sarif@v3
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@4355270be5728de200727db07860777ccf06f7f1
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -53,18 +64,19 @@ jobs:
       security-events: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
         with:
           persist-credentials: false
 
+      # Pinned ossf/scorecard-action@v2.4.0
       - name: Run Scorecard
-        uses: ossf/scorecard-action@v2.4.0
+        uses: ossf/scorecard-action@62b2cac7ed8198b15735ed49ab1e5cf35480ba46
         with:
           results_file: scorecard-results.sarif
           results_format: sarif
           publish_results: true
 
       - name: Upload Scorecard results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@4355270be5728de200727db07860777ccf06f7f1
         with:
           sarif_file: scorecard-results.sarif
