@@ -10,7 +10,8 @@ data class Message(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val status: MessageStatus,
-    val isOwnMessage: Boolean = false
+    val isOwnMessage: Boolean = false,
+    val mediaAttachment: MediaAttachment? = null
 )
 
 enum class MessageStatus {

@@ -16,7 +16,7 @@ data class P2PMessage(
     @SerializedName("payload") val payload: String? = null
 ) {
     enum class Type {
-        TEXT, ACK, PING, PONG
+        TEXT, ACK, PING, PONG, MEDIA
     }
 
     companion object {
@@ -35,7 +35,7 @@ data class P2PMessage(
             return fromJson(String(bytes, Charsets.UTF_8))
         }
 
-        private const val MAX_MESSAGE_SIZE = 1024 * 1024 // 1MB
+        private const val MAX_MESSAGE_SIZE = 16 * 1024 * 1024 // 16MB for media
     }
 
     fun toJson(): String = gson.toJson(this)

@@ -1,6 +1,7 @@
 package com.meshcipher.data.repository
 
 import app.cash.turbine.test
+import com.google.gson.Gson
 import com.meshcipher.data.local.database.MessageDao
 import com.meshcipher.data.local.entity.MessageEntity
 import com.meshcipher.domain.model.Message
@@ -23,7 +24,7 @@ class MessageRepositoryTest {
     @Before
     fun setup() {
         messageDao = mockk(relaxed = true)
-        repository = MessageRepositoryImpl(messageDao)
+        repository = MessageRepositoryImpl(messageDao, Gson())
     }
 
     @Test

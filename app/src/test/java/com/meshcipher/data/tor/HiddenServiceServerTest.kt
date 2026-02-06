@@ -99,10 +99,11 @@ class HiddenServiceServerTest {
     @Test
     fun `P2PMessage Type enum has expected values`() {
         val types = P2PMessage.Type.entries
-        assertEquals(4, types.size)
+        assertEquals(5, types.size)
         assertTrue(types.contains(P2PMessage.Type.TEXT))
         assertTrue(types.contains(P2PMessage.Type.ACK))
         assertTrue(types.contains(P2PMessage.Type.PING))
         assertTrue(types.contains(P2PMessage.Type.PONG))
+        assertTrue(types.contains(P2PMessage.Type.MEDIA))
     }
 }

@@ -1,13 +1,20 @@
 package com.meshcipher.data.transport
 
+import android.content.Context
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.media.MediaEncryptor
+import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.tor.P2PConnectionManager
+import com.meshcipher.domain.model.MediaAttachment
+import com.meshcipher.domain.model.MediaMessageEnvelope
+import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.model.P2PMessage
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,7 +32,10 @@ class P2PTransport @Inject constructor(
     private val identityManager: IdentityManager,
     private val contactRepository: ContactRepository,
     private val conversationRepository: ConversationRepository,
-    private val messageRepository: MessageRepository
+    private val messageRepository: MessageRepository,
+    private val mediaEncryptor: MediaEncryptor,
+    private val mediaFileManager: MediaFileManager,
+    @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -65,6 +75,7 @@ class P2PTransport @Inject constructor(
 
         when (message.type) {
             P2PMessage.Type.TEXT -> deliverTextMessageLocally(message)
+            P2PMessage.Type.MEDIA -> deliverMediaMessageLocally(message)
             P2PMessage.Type.ACK -> Timber.d("Received ACK for message: %s", message.messageId)
             P2PMessage.Type.PING -> Timber.d("Received PING from: %s", message.senderId)
             P2PMessage.Type.PONG -> Timber.d("Received PONG from: %s", message.senderId)
@@ -110,9 +121,75 @@ class P2PTransport @Inject constructor(
         }
     }
 
+    private suspend fun deliverMediaMessageLocally(p2pMessage: P2PMessage) {
+        try {
+            val payload = p2pMessage.payload ?: return
+            val envelopeJson = String(Base64.getDecoder().decode(payload))
+            val envelope = MediaMessageEnvelope.fromJson(envelopeJson)
+
+            val contacts = contactRepository.getAllContacts().first()
+            val senderContact = contacts.find { contact ->
+                contact.signalProtocolAddress.name == p2pMessage.senderId ||
+                contact.id == p2pMessage.senderId
+            }
+
+            if (senderContact == null) {
+                Timber.w("Received P2P media from unknown sender: %s", p2pMessage.senderId)
+                return
+            }
+
+            val encryptedBytes = Base64.getDecoder().decode(envelope.encryptedData)
+            val decryptedBytes = mediaEncryptor.decrypt(
+                encryptedBytes, envelope.encryptionKey, envelope.encryptionIv
+            )
+
+            val mediaType = MediaType.valueOf(envelope.mediaType)
+            val localPath = mediaFileManager.saveMedia(
+                context, envelope.mediaId, decryptedBytes, mediaType
+            )
+
+            val attachment = MediaAttachment(
+                mediaId = envelope.mediaId,
+                mediaType = mediaType,
+                fileName = envelope.fileName,
+                fileSize = envelope.fileSize,
+                mimeType = envelope.mimeType,
+                localPath = localPath,
+                durationMs = envelope.durationMs,
+                width = envelope.width,
+                height = envelope.height,
+                encryptionKey = envelope.encryptionKey,
+                encryptionIv = envelope.encryptionIv
+            )
+
+            val conversationId = conversationRepository.createOrGetConversation(senderContact.id)
+
+            val message = Message(
+                id = UUID.randomUUID().toString(),
+                conversationId = conversationId,
+                senderId = senderContact.id,
+                recipientId = "me",
+                content = "[${mediaType.name}]",
+                timestamp = p2pMessage.timestamp,
+                status = MessageStatus.DELIVERED,
+                isOwnMessage = false,
+                mediaAttachment = attachment
+            )
+
+            messageRepository.insertMessage(message)
+            conversationRepository.incrementUnreadCount(conversationId)
+
+            Timber.d("Delivered P2P media (%s) from %s in conversation %s",
+                mediaType, senderContact.displayName, conversationId)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to deliver P2P media message locally")
+        }
+    }
+
     suspend fun sendMessage(
         recipientUserId: String,
-        encryptedContent: ByteArray
+        encryptedContent: ByteArray,
+        contentType: Int = 0
     ): Result<String> {
         if (!isAvailable()) {
             Timber.w("P2P Tor not available, isRunning=%b", p2pConnectionManager.isRunning())
@@ -138,8 +215,10 @@ class P2PTransport @Inject constructor(
         val messageId = UUID.randomUUID().toString()
         val payload = Base64.getEncoder().encodeToString(encryptedContent)
 
+        val messageType = if (contentType == 1) P2PMessage.Type.MEDIA else P2PMessage.Type.TEXT
+
         val p2pMessage = P2PMessage(
-            type = P2PMessage.Type.TEXT,
+            type = messageType,
             messageId = messageId,
             senderId = identity.userId,
             recipientId = recipientUserId,
@@ -149,7 +228,7 @@ class P2PTransport @Inject constructor(
 
         val result = p2pConnectionManager.sendMessage(onionAddress, p2pMessage)
         return if (result.isSuccess) {
-            Timber.d("P2P message %s sent to %s via %s", messageId, recipientUserId, onionAddress)
+            Timber.d("P2P message %s sent to %s via %s (type=%s)", messageId, recipientUserId, onionAddress, messageType)
             Result.success(messageId)
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("P2P send failed"))
@@ -160,8 +239,6 @@ class P2PTransport @Inject constructor(
 
     fun isRecipientReachable(recipientUserId: String): Boolean {
         if (!isAvailable()) return false
-        // Check synchronously from a cached contacts list is not ideal,
-        // but matches the WifiDirectTransport pattern
         return true
     }
 }

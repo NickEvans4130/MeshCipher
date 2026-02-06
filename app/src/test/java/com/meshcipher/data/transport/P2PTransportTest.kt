@@ -1,6 +1,9 @@
 package com.meshcipher.data.transport
 
+import android.content.Context
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.media.MediaEncryptor
+import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.tor.P2PConnectionManager
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.repository.ContactRepository
@@ -23,6 +26,9 @@ class P2PTransportTest {
     private lateinit var contactRepository: ContactRepository
     private lateinit var conversationRepository: ConversationRepository
     private lateinit var messageRepository: MessageRepository
+    private lateinit var mediaEncryptor: MediaEncryptor
+    private lateinit var mediaFileManager: MediaFileManager
+    private lateinit var context: Context
     private lateinit var p2pTransport: P2PTransport
 
     @Before
@@ -32,13 +38,19 @@ class P2PTransportTest {
         contactRepository = mockk(relaxed = true)
         conversationRepository = mockk(relaxed = true)
         messageRepository = mockk(relaxed = true)
+        mediaEncryptor = mockk(relaxed = true)
+        mediaFileManager = mockk(relaxed = true)
+        context = mockk(relaxed = true)
 
         p2pTransport = P2PTransport(
             p2pConnectionManager = p2pConnectionManager,
             identityManager = identityManager,
             contactRepository = contactRepository,
             conversationRepository = conversationRepository,
-            messageRepository = messageRepository
+            messageRepository = messageRepository,
+            mediaEncryptor = mediaEncryptor,
+            mediaFileManager = mediaFileManager,
+            context = context
         )
     }
 
@@ -143,6 +155,29 @@ class P2PTransportTest {
         coEvery { p2pConnectionManager.sendMessage(any(), any()) } returns Result.success(null)
 
         val result = p2pTransport.sendMessage("user-123", "Hello".toByteArray())
+
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `sendMessage with contentType 1 sends MEDIA type`() = runTest {
+        every { p2pConnectionManager.isRunning() } returns true
+        coEvery { identityManager.getIdentity() } returns mockk(relaxed = true) {
+            every { userId } returns "my-user-id"
+        }
+
+        val contact = Contact(
+            id = "user-123",
+            displayName = "Test",
+            publicKey = ByteArray(32),
+            identityKey = ByteArray(32),
+            signalProtocolAddress = SignalProtocolAddress("user-123", 1),
+            onionAddress = "abc123.onion"
+        )
+        coEvery { contactRepository.getAllContacts() } returns flowOf(listOf(contact))
+        coEvery { p2pConnectionManager.sendMessage(any(), any()) } returns Result.success(null)
+
+        val result = p2pTransport.sendMessage("user-123", "media-data".toByteArray(), contentType = 1)
 
         assertTrue(result.isSuccess)
     }

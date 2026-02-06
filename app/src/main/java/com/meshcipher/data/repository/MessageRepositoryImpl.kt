@@ -1,7 +1,9 @@
 package com.meshcipher.data.repository
 
+import com.google.gson.Gson
 import com.meshcipher.data.local.database.MessageDao
 import com.meshcipher.data.local.entity.MessageEntity
+import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.MessageRepository
@@ -10,7 +12,8 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 class MessageRepositoryImpl @Inject constructor(
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val gson: Gson
 ) : MessageRepository {
 
     override fun getMessagesForConversation(conversationId: String): Flow<List<Message>> {
@@ -35,6 +38,16 @@ class MessageRepositoryImpl @Inject constructor(
     }
 
     private fun MessageEntity.toDomain(): Message {
+        val attachment = if (mediaMetadataJson != null) {
+            try {
+                gson.fromJson(mediaMetadataJson, MediaAttachment::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
         return Message(
             id = id,
             conversationId = conversationId,
@@ -43,7 +56,8 @@ class MessageRepositoryImpl @Inject constructor(
             content = String(encryptedContent),
             timestamp = timestamp,
             status = MessageStatus.valueOf(status),
-            isOwnMessage = senderId == "me" // TODO: Get actual user ID
+            isOwnMessage = senderId == "me",
+            mediaAttachment = attachment
         )
     }
 
@@ -55,7 +69,10 @@ class MessageRepositoryImpl @Inject constructor(
             recipientId = recipientId,
             encryptedContent = content.toByteArray(),
             timestamp = timestamp,
-            status = status.name
+            status = status.name,
+            mediaId = mediaAttachment?.mediaId,
+            mediaType = mediaAttachment?.mediaType?.name,
+            mediaMetadataJson = if (mediaAttachment != null) gson.toJson(mediaAttachment) else null
         )
     }
 }

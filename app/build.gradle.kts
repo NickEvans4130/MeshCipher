@@ -127,6 +127,10 @@ dependencies {
     // JSON
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // Image loading
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-video:2.5.0")
+
     // Embedded Tor (Guardian Project)
     implementation("info.guardianproject:tor-android:0.4.8.22") {
         exclude(group = "org.jetbrains.kotlin")

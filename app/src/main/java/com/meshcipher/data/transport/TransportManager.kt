@@ -79,14 +79,15 @@ class TransportManager @Inject constructor(
     suspend fun sendWithFallback(
         senderId: String,
         recipientId: String,
-        encryptedContent: ByteArray
+        encryptedContent: ByteArray,
+        contentType: Int = 0
     ): Result<String> {
         val mode = currentMode.get()
 
         // P2P_TOR: Try P2P Tor first, then WiFi Direct, then Bluetooth mesh
         if (mode == ConnectionMode.P2P_TOR) {
             if (p2pTransport.isAvailable()) {
-                val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent)
+                val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
                 if (p2pResult.isSuccess) {
                     Timber.d("Sent via P2P Tor to %s", recipientId)
                     return p2pResult
@@ -101,7 +102,7 @@ class TransportManager @Inject constructor(
                 Timber.d("P2P Tor not available (state: not running)")
             }
             if (wifiDirectTransport.isAvailable()) {
-                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
                 if (wifiResult.isSuccess) return wifiResult
                 Timber.d("WiFi Direct failed, trying Bluetooth mesh")
             }
@@ -117,7 +118,7 @@ class TransportManager @Inject constructor(
         // P2P_ONLY: Try WiFi Direct first (better range/bandwidth), then Bluetooth mesh
         if (mode == ConnectionMode.P2P_ONLY) {
             if (wifiDirectTransport.isAvailable()) {
-                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
                 if (wifiResult.isSuccess) return wifiResult
                 Timber.d("WiFi Direct failed, trying Bluetooth mesh")
             }
@@ -126,7 +127,7 @@ class TransportManager @Inject constructor(
 
         // Try P2P Tor first if available and recipient is reachable
         if (p2pTransport.isAvailable() && p2pTransport.isRecipientReachable(recipientId)) {
-            val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent)
+            val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
             if (p2pResult.isSuccess) {
                 Timber.d("Sent via P2P Tor to %s", recipientId)
                 return p2pResult
@@ -136,7 +137,7 @@ class TransportManager @Inject constructor(
 
         // Try WiFi Direct when available
         if (wifiDirectTransport.isAvailable()) {
-            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
             if (wifiResult.isSuccess) {
                 Timber.d("Sent via WiFi Direct to %s", recipientId)
                 return wifiResult
@@ -147,7 +148,7 @@ class TransportManager @Inject constructor(
         // Try internet transport
         val transport = getActiveTransport()
         val internetResult = try {
-            transport.sendMessage(senderId, recipientId, encryptedContent)
+            transport.sendMessage(senderId, recipientId, encryptedContent, contentType)
         } catch (e: Exception) {
             Timber.w(e, "Internet transport failed, trying offline fallback")
             Result.failure(e)
