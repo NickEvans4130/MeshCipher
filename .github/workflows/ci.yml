@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Best Practice: Explicit global permissions
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -13,11 +17,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # Best practice for artifact upload
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
 
+      # Pinned actions/setup-java@v4.0.0
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93
         with:
           distribution: temurin
           java-version: 17
@@ -32,9 +40,10 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
+      # Pinned actions/upload-artifact@v4.0.0
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@1746f48da222e1aa46b4499088699478f99e4695
         with:
           name: test-results
           path: app/build/reports/tests/
@@ -42,10 +51,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93
         with:
           distribution: temurin
           java-version: 17
@@ -59,7 +68,7 @@ jobs:
 
       - name: Upload lint results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@1746f48da222e1aa46b4499088699478f99e4695
         with:
           name: lint-results
           path: app/build/reports/lint-results-debug.html
@@ -67,10 +76,10 @@ jobs:
   detekt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93
         with:
           distribution: temurin
           java-version: 17
@@ -84,7 +93,7 @@ jobs:
 
       - name: Upload detekt results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@1746f48da222e1aa46b4499088699478f99e4695
         with:
           name: detekt-results
           path: app/build/reports/detekt/
