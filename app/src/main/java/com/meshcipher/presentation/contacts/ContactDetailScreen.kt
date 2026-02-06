@@ -1,6 +1,8 @@
 package com.meshcipher.presentation.contacts
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -20,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.MessageExpiryMode
+import com.meshcipher.presentation.theme.*
+import com.meshcipher.presentation.util.getAvatarColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +47,9 @@ fun ContactDetailScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
+            containerColor = TacticalSurface,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
             title = { Text("Delete Contact") },
             text = {
                 Text("Are you sure you want to delete ${contact?.displayName ?: "this contact"}? This action cannot be undone.")
@@ -54,14 +61,19 @@ fun ContactDetailScreen(
                         viewModel.deleteContact(onContactDeleted)
                     },
                     colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
+                        contentColor = StatusError
                     )
                 ) {
                     Text("Delete")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(
+                    onClick = { showDeleteDialog = false },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = TextSecondary
+                    )
+                ) {
                     Text("Cancel")
                 }
             }
@@ -69,9 +81,17 @@ fun ContactDetailScreen(
     }
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditing) "Edit Contact" else "Contact") },
+                title = {
+                    Text(
+                        if (isEditing) "Edit Contact" else "Contact",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (isEditing) {
@@ -82,24 +102,32 @@ fun ContactDetailScreen(
                     }) {
                         Icon(
                             if (isEditing) Icons.Default.Close else Icons.Default.ArrowBack,
-                            contentDescription = if (isEditing) "Cancel" else "Back"
+                            contentDescription = if (isEditing) "Cancel" else "Back",
+                            tint = TextPrimary
                         )
                     }
                 },
                 actions = {
                     if (!isEditing) {
                         IconButton(onClick = { viewModel.startEditing() }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit",
+                                tint = TextSecondary
+                            )
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error
+                                tint = StatusError
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         }
     ) { padding ->
@@ -110,7 +138,7 @@ fun ContactDetailScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = SecureGreen)
             }
         } else {
             Column(
@@ -126,16 +154,18 @@ fun ContactDetailScreen(
                         .padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    val avatarColor = getAvatarColor(contact?.id ?: "")
                     Surface(
                         modifier = Modifier.size(96.dp),
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.primaryContainer
+                        shape = RoundedCornerShape(20.dp),
+                        color = avatarColor.copy(alpha = 0.15f)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = (contact?.displayName?.firstOrNull()?.uppercase() ?: "?"),
                                 style = MaterialTheme.typography.displaySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                color = avatarColor,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -146,9 +176,18 @@ fun ContactDetailScreen(
                     OutlinedTextField(
                         value = editName,
                         onValueChange = { viewModel.updateName(it) },
-                        label = { Text("Name") },
+                        label = { Text("Name", color = TextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = SecureGreen,
+                            unfocusedBorderColor = DividerMedium,
+                            cursorColor = SecureGreen,
+                            focusedLabelColor = SecureGreen,
+                            unfocusedLabelColor = TextSecondary
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -156,10 +195,24 @@ fun ContactDetailScreen(
                     OutlinedTextField(
                         value = editUserId,
                         onValueChange = { viewModel.updateUserId(it) },
-                        label = { Text("User ID") },
+                        label = { Text("User ID", color = TextSecondary) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        supportingText = { Text("Their User ID from Settings > Account") }
+                        supportingText = {
+                            Text(
+                                "Their User ID from Settings > Account",
+                                color = TextTertiary
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = SecureGreen,
+                            unfocusedBorderColor = DividerMedium,
+                            cursorColor = SecureGreen,
+                            focusedLabelColor = SecureGreen,
+                            unfocusedLabelColor = TextSecondary
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -167,12 +220,18 @@ fun ContactDetailScreen(
                     Button(
                         onClick = { viewModel.saveChanges {} },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isSaving && editName.isNotBlank() && editUserId.isNotBlank()
+                        enabled = !isSaving && editName.isNotBlank() && editUserId.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SecureGreen,
+                            contentColor = OnSecureGreen,
+                            disabledContainerColor = SecureGreen.copy(alpha = 0.3f),
+                            disabledContentColor = OnSecureGreen.copy(alpha = 0.5f)
+                        )
                     ) {
                         if (isSaving) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = OnSecureGreen
                             )
                         } else {
                             Text("Save Changes")
@@ -180,18 +239,27 @@ fun ContactDetailScreen(
                     }
                 } else {
                     // View mode
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "Name",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextTertiary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = contact?.displayName ?: "",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
                             )
 
                             Spacer(modifier = Modifier.height(16.dp))
@@ -199,13 +267,15 @@ fun ContactDetailScreen(
                             Text(
                                 text = "User ID",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextTertiary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = contact?.signalProtocolAddress?.name ?: "",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = RobotoMonoFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMono
                             )
                         }
                     }
@@ -219,7 +289,11 @@ fun ContactDetailScreen(
                                 onStartConversation(conversationId)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SecureGreen,
+                            contentColor = OnSecureGreen
+                        )
                     ) {
                         Icon(
                             Icons.Default.Message,
@@ -233,17 +307,26 @@ fun ContactDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Disappearing Messages Card
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "Disappearing Messages",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Override the device default for this contact",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -267,7 +350,15 @@ fun ContactDetailScreen(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .menuAnchor()
+                                        .menuAnchor(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedBorderColor = SecureGreen,
+                                        unfocusedBorderColor = DividerMedium,
+                                        focusedTrailingIconColor = SecureGreen,
+                                        unfocusedTrailingIconColor = TextSecondary
+                                    )
                                 )
 
                                 ExposedDropdownMenu(
@@ -275,7 +366,7 @@ fun ContactDetailScreen(
                                     onDismissRequest = { showExpiryDropdown = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Use Device Default") },
+                                        text = { Text("Use Device Default", color = TextPrimary) },
                                         onClick = {
                                             viewModel.setConversationExpiryMode(null)
                                             showExpiryDropdown = false
@@ -283,7 +374,7 @@ fun ContactDetailScreen(
                                     )
                                     MessageExpiryMode.entries.forEach { mode ->
                                         DropdownMenuItem(
-                                            text = { Text(mode.displayName) },
+                                            text = { Text(mode.displayName, color = TextPrimary) },
                                             onClick = {
                                                 viewModel.setConversationExpiryMode(mode)
                                                 showExpiryDropdown = false
@@ -302,14 +393,17 @@ fun ContactDetailScreen(
                         onClick = { showDeleteDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
+                            contentColor = StatusError
+                        ),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(StatusError.copy(alpha = 0.5f))
                         ),
                         enabled = !isDeleting
                     ) {
                         if (isDeleting) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.error
+                                color = StatusError
                             )
                         } else {
                             Icon(

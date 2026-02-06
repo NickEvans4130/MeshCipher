@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tactical Dark Color Scheme -->
+
+    <!-- Background Colors -->
+    <color name="tactical_background">#121212</color>
+    <color name="tactical_surface">#1E1E1E</color>
+    <color name="tactical_elevated">#252525</color>
+
+    <!-- Accent Colors -->
+    <color name="tactical_secure_green">#76D166</color>
+    <color name="tactical_muted_purple">#9C27B0</color>
+    <color name="tactical_sky_blue">#03A9F4</color>
+
+    <!-- Text Colors -->
+    <color name="tactical_text_primary">#FFFFFF</color>
+    <color name="tactical_text_secondary">#B0B0B0</color>
+    <color name="tactical_text_tertiary">#6B6B6B</color>
+    <color name="tactical_text_mono">#8E8E8E</color>
+
+    <!-- Status Colors -->
+    <color name="tactical_status_active">#76D166</color>
+    <color name="tactical_status_warning">#FFA726</color>
+    <color name="tactical_status_error">#EF5350</color>
+    <color name="tactical_status_neutral">#78909C</color>
+
+    <!-- Dividers -->
+    <color name="tactical_divider_subtle">#2A2A2A</color>
+    <color name="tactical_divider_medium">#404040</color>
+
+    <!-- Special -->
+    <color name="tactical_encryption_ghost">#1AFFFFFF</color>
+</resources>

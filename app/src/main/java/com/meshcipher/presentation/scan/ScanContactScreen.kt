@@ -22,6 +22,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.ContactCard
+import com.meshcipher.presentation.theme.InterFontFamily
+import com.meshcipher.presentation.theme.RobotoMonoFontFamily
 import timber.log.Timber
 
 @Composable
@@ -97,7 +99,7 @@ fun ScanContactScreen(
                 .align(Alignment.BottomCenter)
                 .padding(32.dp),
             color = Color.White,
-            style = MaterialTheme.typography.titleMedium
+            fontFamily = InterFontFamily
         )
     }
 }

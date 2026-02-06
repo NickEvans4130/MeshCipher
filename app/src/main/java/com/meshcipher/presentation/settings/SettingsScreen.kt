@@ -41,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.MessageExpiryMode
+import com.meshcipher.presentation.theme.*
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +85,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
@@ -91,7 +93,12 @@ fun SettingsScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground,
+                    titleContentColor = TextPrimary,
+                    navigationIconContentColor = TextPrimary
+                )
             )
         }
     ) { padding ->
@@ -106,17 +113,23 @@ fun SettingsScreen(
             Text(
                 text = "Account",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "Your ID",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
@@ -127,6 +140,8 @@ fun SettingsScreen(
                         Text(
                             text = userId ?: "Loading...",
                             style = MaterialTheme.typography.bodyLarge,
+                            fontFamily = RobotoMonoFontFamily,
+                            color = TextMono,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -150,9 +165,9 @@ fun SettingsScreen(
                                 Icons.Default.ContentCopy,
                                 contentDescription = "Copy ID",
                                 tint = if (showCopiedMessage) {
-                                    MaterialTheme.colorScheme.primary
+                                    SecureGreen
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    TextSecondary
                                 }
                             )
                         }
@@ -162,7 +177,7 @@ fun SettingsScreen(
                         Text(
                             text = "Copied to clipboard",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = SecureGreen
                         )
                     }
                 }
@@ -178,7 +193,9 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onShareContactClick)
+                        .clickable(onClick = onShareContactClick),
+                    colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                    border = BorderStroke(1.dp, DividerSubtle)
                 ) {
                     Column(
                         modifier = Modifier
@@ -190,18 +207,19 @@ fun SettingsScreen(
                             Icons.Default.QrCode,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = SecureGreen
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "My QR Code",
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
                         )
                         Text(
                             text = "Share with others",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = TextSecondary
                         )
                     }
                 }
@@ -209,7 +227,9 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onScanContactClick)
+                        .clickable(onClick = onScanContactClick),
+                    colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                    border = BorderStroke(1.dp, DividerSubtle)
                 ) {
                     Column(
                         modifier = Modifier
@@ -221,18 +241,19 @@ fun SettingsScreen(
                             Icons.Default.QrCodeScanner,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = SecureGreen
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Scan QR Code",
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
                         )
                         Text(
                             text = "Add a contact",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = TextSecondary
                         )
                     }
                 }
@@ -244,7 +265,9 @@ fun SettingsScreen(
             Text(
                 text = "Connection Mode",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -307,12 +330,18 @@ fun SettingsScreen(
             Text(
                 text = "Bluetooth Mesh",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -323,12 +352,13 @@ fun SettingsScreen(
                             Text(
                                 text = "Enable Mesh Networking",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Communicate with nearby devices via Bluetooth",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                         Switch(
@@ -340,7 +370,14 @@ fun SettingsScreen(
                                     viewModel.setMeshEnabled(enabled)
                                 }
                             },
-                            enabled = hasBluetoothPermissions || !meshEnabled
+                            enabled = hasBluetoothPermissions || !meshEnabled,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnSecureGreen,
+                                checkedTrackColor = SecureGreen,
+                                uncheckedThumbColor = TextSecondary,
+                                uncheckedTrackColor = TacticalElevated,
+                                uncheckedBorderColor = DividerMedium
+                            )
                         )
                     }
 
@@ -350,19 +387,22 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
+                                tint = StatusError,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Bluetooth permissions required",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
+                                color = StatusError
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(
-                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = SecureGreen
+                            )
                         ) {
                             Text("Grant Permissions")
                         }
@@ -374,19 +414,22 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.Notifications,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
+                                tint = StatusWarning,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Enable notifications to be alerted of new messages",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(
-                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                            onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = SecureGreen
+                            )
                         ) {
                             Text("Enable Notifications")
                         }
@@ -398,14 +441,14 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.Bluetooth,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = TextSecondary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Bluetooth is disabled. Enable it in system settings.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
@@ -418,7 +461,9 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onMeshNetworkClick)
+                    .clickable(onClick = onMeshNetworkClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
             ) {
                 Row(
                     modifier = Modifier
@@ -431,18 +476,19 @@ fun SettingsScreen(
                         Text(
                             text = "View Mesh Network",
                             style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
                         )
                         Text(
                             text = "See network topology and nearby devices",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = TextSecondary
                         )
                     }
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = TextSecondary
                     )
                 }
             }
@@ -453,7 +499,9 @@ fun SettingsScreen(
             Text(
                 text = "WiFi Direct",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -461,7 +509,9 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onWifiDirectClick)
+                    .clickable(onClick = onWifiDirectClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
             ) {
                 Row(
                     modifier = Modifier
@@ -477,7 +527,7 @@ fun SettingsScreen(
                         Icon(
                             Icons.Default.Wifi,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = SecureGreen,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -485,19 +535,20 @@ fun SettingsScreen(
                             Text(
                                 text = "WiFi Direct P2P",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
                             )
                             Text(
                                 text = "High-speed transfers up to 100m range",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = TextSecondary
                     )
                 }
             }
@@ -508,7 +559,9 @@ fun SettingsScreen(
             Text(
                 text = "P2P Tor",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -516,7 +569,9 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onP2PTorClick)
+                    .clickable(onClick = onP2PTorClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
             ) {
                 Row(
                     modifier = Modifier
@@ -532,7 +587,7 @@ fun SettingsScreen(
                         Icon(
                             Icons.Default.Security,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = SecureGreen,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -540,19 +595,20 @@ fun SettingsScreen(
                             Text(
                                 text = "P2P Tor Hidden Service",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Direct messaging via .onion addresses",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = TextSecondary
                     )
                 }
             }
@@ -563,22 +619,29 @@ fun SettingsScreen(
             Text(
                 text = "Privacy",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "Disappearing Messages",
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
                     )
                     Text(
                         text = "Set a default timer for all new messages",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -594,6 +657,14 @@ fun SettingsScreen(
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = showExpiryDropdown)
                             },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedBorderColor = SecureGreen,
+                                unfocusedBorderColor = DividerSubtle,
+                                focusedTrailingIconColor = SecureGreen,
+                                unfocusedTrailingIconColor = TextSecondary
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .menuAnchor()
@@ -605,7 +676,12 @@ fun SettingsScreen(
                         ) {
                             MessageExpiryMode.entries.forEach { mode ->
                                 DropdownMenuItem(
-                                    text = { Text(mode.displayName) },
+                                    text = {
+                                        Text(
+                                            mode.displayName,
+                                            color = TextPrimary
+                                        )
+                                    },
                                     onClick = {
                                         viewModel.setMessageExpiryMode(mode)
                                         showExpiryDropdown = false
@@ -624,7 +700,7 @@ fun SettingsScreen(
                             else -> "Messages will automatically delete after ${messageExpiryMode.displayName.lowercase()}"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
             }
@@ -641,15 +717,15 @@ private fun ConnectionModeCard(
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary
+        SecureGreen
     } else {
-        MaterialTheme.colorScheme.outlineVariant
+        DividerSubtle
     }
 
     val containerColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        TacticalElevated
     } else {
-        MaterialTheme.colorScheme.surface
+        TacticalSurface
     }
 
     Card(
@@ -671,7 +747,13 @@ private fun ConnectionModeCard(
             RadioButton(
                 selected = selected,
                 onClick = if (enabled) onClick else null,
-                enabled = enabled
+                enabled = enabled,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = SecureGreen,
+                    unselectedColor = TextSecondary,
+                    disabledSelectedColor = SecureGreen.copy(alpha = 0.38f),
+                    disabledUnselectedColor = TextSecondary.copy(alpha = 0.38f)
+                )
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -682,9 +764,9 @@ private fun ConnectionModeCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
                     color = if (enabled) {
-                        MaterialTheme.colorScheme.onSurface
+                        TextPrimary
                     } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        TextPrimary.copy(alpha = 0.38f)
                     }
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -692,9 +774,9 @@ private fun ConnectionModeCard(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (enabled) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        TextSecondary
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        TextSecondary.copy(alpha = 0.38f)
                     }
                 )
             }
@@ -713,7 +795,9 @@ private fun TorStatusSection(
     Text(
         text = "TOR Status",
         style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        color = SecureGreen
     )
 
     Spacer(modifier = Modifier.height(8.dp))
@@ -721,8 +805,9 @@ private fun TorStatusSection(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+            containerColor = TacticalSurface
+        ),
+        border = BorderStroke(1.dp, DividerSubtle)
     ) {
         Column(
             modifier = Modifier
@@ -733,16 +818,23 @@ private fun TorStatusSection(
                 !torStatus.orbotInstalled -> {
                     Text(
                         text = "Orbot is not installed",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Orbot provides TOR connectivity on Android. Install it to use TOR relay mode.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = onInstallOrbot) {
+                    Button(
+                        onClick = onInstallOrbot,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SecureGreen,
+                            contentColor = OnSecureGreen
+                        )
+                    ) {
                         Text("Install Orbot")
                     }
                 }
@@ -750,20 +842,33 @@ private fun TorStatusSection(
                 !torStatus.orbotRunning -> {
                     Text(
                         text = "Orbot is installed but not running",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Start Orbot and connect to the TOR network before enabling TOR relay mode.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onOpenOrbot) {
+                        Button(
+                            onClick = onOpenOrbot,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SecureGreen,
+                                contentColor = OnSecureGreen
+                            )
+                        ) {
                             Text("Open Orbot")
                         }
-                        OutlinedButton(onClick = onRefresh) {
+                        OutlinedButton(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = SecureGreen
+                            ),
+                            border = BorderStroke(1.dp, SecureGreen)
+                        ) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = "Refresh",
@@ -780,7 +885,7 @@ private fun TorStatusSection(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = "Connected",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = SecureGreen,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -788,17 +893,23 @@ private fun TorStatusSection(
                             text = "TOR Connected",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = SecureGreen
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Traffic is being routed through the TOR network.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = onRefresh) {
+                    OutlinedButton(
+                        onClick = onRefresh,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = SecureGreen
+                        ),
+                        border = BorderStroke(1.dp, SecureGreen)
+                    ) {
                         Icon(
                             Icons.Default.Refresh,
                             contentDescription = "Refresh",

@@ -4,11 +4,13 @@ import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,13 +21,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaType
 import com.meshcipher.domain.model.Message
+import com.meshcipher.presentation.theme.*
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -102,7 +106,6 @@ fun ChatScreen(
         }
     }
 
-    // Media viewer dialog
     viewingMediaPath?.let { path ->
         MediaViewerDialog(
             filePath = path,
@@ -115,12 +118,49 @@ fun ChatScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(contact?.displayName ?: "Loading...") },
+                title = {
+                    Column {
+                        Text(
+                            text = contact?.displayName ?: "Loading...",
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            color = TextPrimary
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = SecureGreen,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = "end-to-end encrypted",
+                                fontFamily = RobotoMonoFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 10.sp,
+                                color = TextTertiary
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground,
+                    titleContentColor = TextPrimary,
+                    navigationIconContentColor = TextPrimary
+                )
             )
         },
         bottomBar = {
@@ -128,7 +168,9 @@ fun ChatScreen(
                 mediaSendingProgress?.let { progress ->
                     LinearProgressIndicator(
                         progress = progress,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        color = SecureGreen,
+                        trackColor = TacticalElevated
                     )
                 }
 
@@ -151,7 +193,8 @@ fun ChatScreen(
                     )
                 }
             }
-        }
+        },
+        containerColor = TacticalBackground
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -175,7 +218,6 @@ fun ChatScreen(
         }
     }
 
-    // Media picker bottom sheet
     if (mediaPickerVisible) {
         MediaPickerSheet(
             onDismiss = { viewModel.dismissMediaPicker() },
@@ -213,10 +255,7 @@ fun MessageBubble(
                 bottomStart = if (message.isOwnMessage) 16.dp else 4.dp,
                 bottomEnd = if (message.isOwnMessage) 4.dp else 16.dp
             ),
-            color = if (message.isOwnMessage)
-                MaterialTheme.colorScheme.primary
-            else
-                MaterialTheme.colorScheme.surfaceVariant,
+            color = if (message.isOwnMessage) SecureGreen else TacticalSurface,
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Column(
@@ -235,11 +274,10 @@ fun MessageBubble(
                 } else {
                     Text(
                         text = message.content,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (message.isOwnMessage)
-                            MaterialTheme.colorScheme.onPrimary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 16.sp,
+                        color = if (message.isOwnMessage) OnSecureGreen else TextPrimary
                     )
                 }
 
@@ -247,11 +285,13 @@ fun MessageBubble(
 
                 Text(
                     text = formatTime(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = RobotoMonoFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
                     color = if (message.isOwnMessage)
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                        OnSecureGreen.copy(alpha = 0.6f)
                     else
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        TextMono,
                     modifier = Modifier
                         .align(Alignment.End)
                         .padding(horizontal = if (message.mediaAttachment != null) 8.dp else 0.dp)
@@ -317,13 +357,14 @@ private fun MediaMessageContent(
                     modifier = Modifier
                         .size(48.dp)
                         .align(Alignment.Center),
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    tint = TextPrimary.copy(alpha = 0.8f)
                 )
                 attachment.durationMs?.let { duration ->
                     Text(
                         text = formatDuration(duration),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        fontFamily = RobotoMonoFontFamily,
+                        fontSize = 11.sp,
+                        color = TextPrimary,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(8.dp)
@@ -352,6 +393,9 @@ private fun VoiceMessageBubble(
     val playbackProgress by viewModel.voicePlayer.playbackProgress.collectAsState()
 
     val isThisPlaying = playingMediaId == attachment.mediaId && isPlaying
+    val fgColor = if (isOwnMessage) OnSecureGreen else TextPrimary
+    val trackColor = if (isOwnMessage) OnSecureGreen.copy(alpha = 0.3f) else SecureGreen.copy(alpha = 0.3f)
+    val progressColor = if (isOwnMessage) OnSecureGreen else SecureGreen
 
     Row(
         modifier = Modifier
@@ -371,10 +415,7 @@ private fun VoiceMessageBubble(
             Icon(
                 if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (isThisPlaying) "Pause" else "Play",
-                tint = if (isOwnMessage)
-                    MaterialTheme.colorScheme.onPrimary
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                tint = fgColor
             )
         }
 
@@ -386,25 +427,17 @@ private fun VoiceMessageBubble(
             modifier = Modifier
                 .weight(1f)
                 .height(4.dp),
-            color = if (isOwnMessage)
-                MaterialTheme.colorScheme.onPrimary
-            else
-                MaterialTheme.colorScheme.primary,
-            trackColor = if (isOwnMessage)
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            color = progressColor,
+            trackColor = trackColor
         )
 
         Spacer(modifier = Modifier.width(8.dp))
 
         Text(
             text = formatDuration(attachment.durationMs ?: 0),
-            style = MaterialTheme.typography.labelSmall,
-            color = if (isOwnMessage)
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-            else
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            fontFamily = RobotoMonoFontFamily,
+            fontSize = 11.sp,
+            color = fgColor.copy(alpha = 0.7f)
         )
     }
 }
@@ -415,26 +448,19 @@ private fun MediaPlaceholder(
     label: String,
     isOwnMessage: Boolean
 ) {
+    val color = if (isOwnMessage) OnSecureGreen.copy(alpha = 0.7f) else TextSecondary
+
     Row(
         modifier = Modifier.padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = if (isOwnMessage)
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-            else
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-        )
+        Icon(icon, contentDescription = label, tint = color)
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isOwnMessage)
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-            else
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            fontFamily = InterFontFamily,
+            fontSize = 14.sp,
+            color = color
         )
     }
 }
@@ -445,10 +471,7 @@ fun VoiceRecordBar(
     onCancel: () -> Unit,
     onStop: () -> Unit
 ) {
-    Surface(
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.errorContainer
-    ) {
+    Surface(color = TacticalSurface) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -459,26 +482,34 @@ fun VoiceRecordBar(
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Cancel recording",
-                    tint = MaterialTheme.colorScheme.error
+                    tint = StatusError
                 )
             }
 
-            Icon(
-                Icons.Default.FiberManualRecord,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(12.dp)
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(StatusError, CircleShape)
             )
 
             Spacer(modifier = Modifier.width(8.dp))
 
             Text(
                 text = formatDuration(durationMs),
-                style = MaterialTheme.typography.bodyLarge,
+                fontFamily = RobotoMonoFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp,
+                color = TextPrimary,
                 modifier = Modifier.weight(1f)
             )
 
-            FilledIconButton(onClick = onStop) {
+            FilledIconButton(
+                onClick = onStop,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = SecureGreen,
+                    contentColor = OnSecureGreen
+                )
+            ) {
                 Icon(Icons.Default.Send, contentDescription = "Send voice note")
             }
         }
@@ -493,7 +524,11 @@ fun MediaPickerSheet(
     onGalleryClick: () -> Unit,
     onVideoClick: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = TacticalSurface,
+        contentColor = TextPrimary
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -501,26 +536,44 @@ fun MediaPickerSheet(
         ) {
             Text(
                 text = "Share Media",
-                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                color = TextPrimary,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
             ListItem(
-                headlineContent = { Text("Camera") },
-                leadingContent = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onCameraClick)
+                headlineContent = {
+                    Text("Camera", fontFamily = InterFontFamily, color = TextPrimary)
+                },
+                leadingContent = {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, tint = SecureGreen)
+                },
+                modifier = Modifier.clickable(onClick = onCameraClick),
+                colors = ListItemDefaults.colors(containerColor = TacticalSurface)
             )
 
             ListItem(
-                headlineContent = { Text("Photo from Gallery") },
-                leadingContent = { Icon(Icons.Default.Image, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onGalleryClick)
+                headlineContent = {
+                    Text("Photo from Gallery", fontFamily = InterFontFamily, color = TextPrimary)
+                },
+                leadingContent = {
+                    Icon(Icons.Default.Image, contentDescription = null, tint = SecureGreen)
+                },
+                modifier = Modifier.clickable(onClick = onGalleryClick),
+                colors = ListItemDefaults.colors(containerColor = TacticalSurface)
             )
 
             ListItem(
-                headlineContent = { Text("Video from Gallery") },
-                leadingContent = { Icon(Icons.Default.Videocam, contentDescription = null) },
-                modifier = Modifier.clickable(onClick = onVideoClick)
+                headlineContent = {
+                    Text("Video from Gallery", fontFamily = InterFontFamily, color = TextPrimary)
+                },
+                leadingContent = {
+                    Icon(Icons.Default.Videocam, contentDescription = null, tint = SecureGreen)
+                },
+                modifier = Modifier.clickable(onClick = onVideoClick),
+                colors = ListItemDefaults.colors(containerColor = TacticalSurface)
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -537,9 +590,7 @@ fun MessageInputBar(
     onMicClick: () -> Unit,
     isSending: Boolean
 ) {
-    Surface(
-        tonalElevation = 3.dp
-    ) {
+    Surface(color = TacticalSurface) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -547,17 +598,36 @@ fun MessageInputBar(
             verticalAlignment = Alignment.Bottom
         ) {
             IconButton(onClick = onAttachClick) {
-                Icon(Icons.Default.AttachFile, contentDescription = "Attach media")
+                Icon(
+                    Icons.Default.AttachFile,
+                    contentDescription = "Attach media",
+                    tint = TextSecondary
+                )
             }
 
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Message") },
+                placeholder = {
+                    Text(
+                        "Message",
+                        fontFamily = InterFontFamily,
+                        color = TextTertiary
+                    )
+                },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
-                enabled = !isSending
+                enabled = !isSending,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = SecureGreen,
+                    unfocusedBorderColor = DividerMedium,
+                    cursorColor = SecureGreen,
+                    focusedContainerColor = TacticalElevated,
+                    unfocusedContainerColor = TacticalElevated
+                )
             )
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -565,14 +635,22 @@ fun MessageInputBar(
             if (value.isBlank()) {
                 FilledIconButton(
                     onClick = onMicClick,
-                    enabled = !isSending
+                    enabled = !isSending,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = SecureGreen,
+                        contentColor = OnSecureGreen
+                    )
                 ) {
                     Icon(Icons.Default.Mic, contentDescription = "Voice note")
                 }
             } else {
                 FilledIconButton(
                     onClick = onSendClick,
-                    enabled = value.isNotBlank() && !isSending
+                    enabled = value.isNotBlank() && !isSending,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = SecureGreen,
+                        contentColor = OnSecureGreen
+                    )
                 ) {
                     Icon(Icons.Default.Send, contentDescription = "Send")
                 }

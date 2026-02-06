@@ -1,6 +1,8 @@
 package com.meshcipher.presentation.contacts
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -10,8 +12,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.meshcipher.presentation.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,14 +30,29 @@ fun AddContactScreen(
     val isFromQRScan = viewModel.isFromQRScan
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text(if (isFromQRScan) "Add Scanned Contact" else "Add Contact") },
+                title = {
+                    Text(
+                        if (isFromQRScan) "Add Scanned Contact" else "Add Contact",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         }
     ) { padding ->
@@ -45,10 +64,13 @@ fun AddContactScreen(
         ) {
             if (isFromQRScan) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, SecureGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                        containerColor = SecureGreen.copy(alpha = 0.1f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -57,13 +79,13 @@ fun AddContactScreen(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = SecureGreen
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = "QR code scanned successfully! Enter a name for this contact.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = TextPrimary
                         )
                     }
                 }
@@ -73,10 +95,23 @@ fun AddContactScreen(
             OutlinedTextField(
                 value = name,
                 onValueChange = { viewModel.updateName(it) },
-                label = { Text("Name") },
+                label = { Text("Name", color = TextSecondary) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                placeholder = { Text("Enter contact name") }
+                placeholder = {
+                    Text("Enter contact name", color = TextTertiary)
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = SecureGreen,
+                    unfocusedBorderColor = DividerMedium,
+                    cursorColor = SecureGreen,
+                    focusedLabelColor = SecureGreen,
+                    unfocusedLabelColor = TextSecondary,
+                    focusedPlaceholderColor = TextTertiary,
+                    unfocusedPlaceholderColor = TextTertiary
+                )
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -84,16 +119,26 @@ fun AddContactScreen(
             OutlinedTextField(
                 value = identifier,
                 onValueChange = { if (!isFromQRScan) viewModel.updateIdentifier(it) },
-                label = { Text("User ID") },
+                label = { Text("User ID", color = TextSecondary) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 readOnly = isFromQRScan,
                 supportingText = {
                     Text(
                         if (isFromQRScan) "ID from scanned QR code"
-                        else "Enter their User ID from Settings > Account"
+                        else "Enter their User ID from Settings > Account",
+                        color = TextTertiary
                     )
-                }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = SecureGreen,
+                    unfocusedBorderColor = DividerMedium,
+                    cursorColor = SecureGreen,
+                    focusedLabelColor = SecureGreen,
+                    unfocusedLabelColor = TextSecondary
+                )
             )
 
             if (viewModel.scannedOnionAddress != null) {
@@ -102,13 +147,24 @@ fun AddContactScreen(
                 OutlinedTextField(
                     value = viewModel.scannedOnionAddress,
                     onValueChange = {},
-                    label = { Text("Onion Address") },
+                    label = { Text("Onion Address", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     readOnly = true,
                     supportingText = {
-                        Text("P2P address from scanned QR code")
-                    }
+                        Text(
+                            "P2P address from scanned QR code",
+                            color = TextTertiary
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextMono,
+                        unfocusedTextColor = TextMono,
+                        focusedBorderColor = SecureGreen,
+                        unfocusedBorderColor = DividerMedium,
+                        focusedLabelColor = SecureGreen,
+                        unfocusedLabelColor = TextSecondary
+                    )
                 )
             }
 
@@ -117,12 +173,18 @@ fun AddContactScreen(
             Button(
                 onClick = { viewModel.addContact(onContactAdded) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading && name.isNotBlank() && identifier.isNotBlank()
+                enabled = !isLoading && name.isNotBlank() && identifier.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SecureGreen,
+                    contentColor = OnSecureGreen,
+                    disabledContainerColor = SecureGreen.copy(alpha = 0.3f),
+                    disabledContentColor = OnSecureGreen.copy(alpha = 0.5f)
+                )
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
+                        color = OnSecureGreen
                     )
                 } else {
                     Text("Add Contact")

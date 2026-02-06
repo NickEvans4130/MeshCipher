@@ -2,9 +2,11 @@ package com.meshcipher.presentation.wifidirect
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Group
@@ -21,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.WifiDirectPeer
+import com.meshcipher.presentation.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,12 +47,24 @@ fun WifiDirectScreen(
     }
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text("WiFi Direct") },
+                title = {
+                    Text(
+                        "WiFi Direct",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
                 },
                 actions = {
@@ -62,11 +77,15 @@ fun WifiDirectScreen(
                         ) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = if (isDiscovering) "Stop Discovery" else "Start Discovery"
+                                contentDescription = if (isDiscovering) "Stop Discovery" else "Start Discovery",
+                                tint = TextPrimary
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         }
     ) { padding ->
@@ -81,27 +100,34 @@ fun WifiDirectScreen(
             if (!hasPermissions) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, StatusError.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
+                            containerColor = StatusError.copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "Permissions Required",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = StatusError
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "WiFi Direct requires location permission to discover nearby devices.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
-                                onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) }
+                                onClick = { permissionLauncher.launch(viewModel.getRequiredPermissions()) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SecureGreen,
+                                    contentColor = OnSecureGreen
+                                )
                             ) {
                                 Text("Grant Permissions")
                             }
@@ -114,23 +140,26 @@ fun WifiDirectScreen(
             if (!viewModel.isSupported()) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, StatusError.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
+                            containerColor = StatusError.copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "WiFi Direct Not Supported",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = StatusError
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "This device does not support WiFi Direct.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = TextSecondary
                             )
                         }
                     }
@@ -155,7 +184,15 @@ fun WifiDirectScreen(
             // Discovery Status
             if (hasPermissions && isWifiP2pEnabled) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -165,12 +202,14 @@ fun WifiDirectScreen(
                                 Text(
                                     text = "Peer Discovery",
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
                                 )
                                 if (isDiscovering) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp
+                                        strokeWidth = 2.dp,
+                                        color = SecureGreen
                                     )
                                 }
                             }
@@ -179,7 +218,7 @@ fun WifiDirectScreen(
                                 text = if (isDiscovering) "Searching for nearby devices..."
                                 else "Tap refresh to search for devices",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
@@ -192,7 +231,8 @@ fun WifiDirectScreen(
                     Text(
                         text = "Nearby Devices (${discoveredPeers.size})",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                 }
 
@@ -206,10 +246,13 @@ fun WifiDirectScreen(
             } else if (hasPermissions && isWifiP2pEnabled && !isDiscovering) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -221,18 +264,18 @@ fun WifiDirectScreen(
                                 Icons.Default.WifiOff,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "No devices found",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Start discovery to find nearby devices",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
@@ -255,14 +298,21 @@ private fun ConnectionStatusCard(
     onDisconnect: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                if (isConnected) SecureGreen.copy(alpha = 0.3f) else DividerSubtle,
+                RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = if (isConnected) {
-                MaterialTheme.colorScheme.primaryContainer
+                SecureGreen.copy(alpha = 0.08f)
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                TacticalSurface
             }
-        )
+        ),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -271,11 +321,7 @@ private fun ConnectionStatusCard(
                 Icon(
                     if (isConnected) Icons.Default.Wifi else Icons.Default.WifiOff,
                     contentDescription = null,
-                    tint = if (isConnected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    tint = if (isConnected) SecureGreen else TextSecondary
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
@@ -287,13 +333,15 @@ private fun ConnectionStatusCard(
                             else -> "Not Connected"
                         },
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                     if (groupInfo != null) {
                         Text(
                             text = "Network: ${groupInfo.networkName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = RobotoMonoFontFamily,
+                            color = TextMono
                         )
                     }
                 }
@@ -308,20 +356,21 @@ private fun ConnectionStatusCard(
                         Icons.Default.Group,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = TextSecondary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "${connectedClients.size} client(s) connected",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
                 if (isServerRunning) {
                     Text(
                         text = "Server running on port 8988",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = RobotoMonoFontFamily,
+                        color = TextMono
                     )
                 }
             }
@@ -331,7 +380,13 @@ private fun ConnectionStatusCard(
             if (isConnected) {
                 OutlinedButton(
                     onClick = onDisconnect,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = StatusError
+                    ),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(StatusError.copy(alpha = 0.5f))
+                    )
                 ) {
                     Text("Disconnect")
                 }
@@ -339,13 +394,19 @@ private fun ConnectionStatusCard(
                 Button(
                     onClick = onCreateGroup,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isConnecting
+                    enabled = !isConnecting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SecureGreen,
+                        contentColor = OnSecureGreen,
+                        disabledContainerColor = SecureGreen.copy(alpha = 0.3f),
+                        disabledContentColor = OnSecureGreen.copy(alpha = 0.5f)
+                    )
                 ) {
                     if (isConnecting) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = OnSecureGreen
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
@@ -362,7 +423,15 @@ private fun PeerCard(
     isConnecting: Boolean,
     onConnect: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = TacticalSurface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -374,12 +443,14 @@ private fun PeerCard(
                 Text(
                     text = peer.deviceName,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary
                 )
                 Text(
                     text = peer.deviceAddress,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = RobotoMonoFontFamily,
+                    color = TextMono
                 )
                 StatusBadge(status = peer.status)
             }
@@ -387,7 +458,13 @@ private fun PeerCard(
             if (peer.status == WifiDirectPeer.ConnectionStatus.AVAILABLE) {
                 Button(
                     onClick = onConnect,
-                    enabled = !isConnecting
+                    enabled = !isConnecting,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SecureGreen,
+                        contentColor = OnSecureGreen,
+                        disabledContainerColor = SecureGreen.copy(alpha = 0.3f),
+                        disabledContentColor = OnSecureGreen.copy(alpha = 0.5f)
+                    )
                 ) {
                     Text("Connect")
                 }
@@ -399,15 +476,15 @@ private fun PeerCard(
 @Composable
 private fun StatusBadge(status: WifiDirectPeer.ConnectionStatus) {
     val (color, text) = when (status) {
-        WifiDirectPeer.ConnectionStatus.AVAILABLE -> MaterialTheme.colorScheme.primary to "Available"
-        WifiDirectPeer.ConnectionStatus.INVITED -> MaterialTheme.colorScheme.tertiary to "Invited"
-        WifiDirectPeer.ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary to "Connected"
-        WifiDirectPeer.ConnectionStatus.FAILED -> MaterialTheme.colorScheme.error to "Failed"
-        WifiDirectPeer.ConnectionStatus.UNAVAILABLE -> MaterialTheme.colorScheme.outline to "Unavailable"
+        WifiDirectPeer.ConnectionStatus.AVAILABLE -> SecureGreen to "Available"
+        WifiDirectPeer.ConnectionStatus.INVITED -> StatusWarning to "Invited"
+        WifiDirectPeer.ConnectionStatus.CONNECTED -> SecureGreen to "Connected"
+        WifiDirectPeer.ConnectionStatus.FAILED -> StatusError to "Failed"
+        WifiDirectPeer.ConnectionStatus.UNAVAILABLE -> StatusNeutral to "Unavailable"
     }
 
     Surface(
-        shape = MaterialTheme.shapes.small,
+        shape = RoundedCornerShape(4.dp),
         color = color.copy(alpha = 0.1f)
     ) {
         Text(

@@ -1,9 +1,11 @@
 package com.meshcipher.presentation.contacts
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
@@ -18,6 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.Contact
+import com.meshcipher.presentation.theme.*
+import com.meshcipher.presentation.util.getAvatarColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,18 +36,37 @@ fun ContactsScreen(
     val unreadCounts by viewModel.unreadCounts.collectAsState()
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text("Contacts") },
+                title = {
+                    Text(
+                        "Contacts",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddContactClick) {
+            FloatingActionButton(
+                onClick = onAddContactClick,
+                containerColor = SecureGreen,
+                contentColor = OnSecureGreen
+            ) {
                 Icon(Icons.Default.PersonAdd, contentDescription = "Add contact")
             }
         }
@@ -58,13 +81,14 @@ fun ContactsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "No contacts yet",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Tap + to add a contact",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
             }
@@ -80,7 +104,7 @@ fun ContactsScreen(
                         unreadCount = unreadCounts[contact.id] ?: 0,
                         onClick = { onContactClick(contact.id) }
                     )
-                    Divider()
+                    Divider(color = DividerSubtle)
                 }
             }
         }
@@ -102,16 +126,18 @@ fun ContactItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box {
+            val avatarColor = getAvatarColor(contact.id)
             Surface(
                 modifier = Modifier.size(48.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer
+                shape = RoundedCornerShape(12.dp),
+                color = avatarColor.copy(alpha = 0.15f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = contact.displayName.firstOrNull()?.uppercase() ?: "?",
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = avatarColor,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -119,11 +145,12 @@ fun ContactItem(
             if (unreadCount > 0) {
                 Badge(
                     modifier = Modifier.align(Alignment.TopEnd),
-                    containerColor = MaterialTheme.colorScheme.error
+                    containerColor = StatusError
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                        style = MaterialTheme.typography.labelSmall
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextPrimary
                     )
                 }
             }
@@ -135,6 +162,7 @@ fun ContactItem(
             Text(
                 text = contact.displayName,
                 style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
                 fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
             )
 
@@ -142,15 +170,16 @@ fun ContactItem(
 
             Text(
                 text = contact.signalProtocolAddress.name,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMono,
+                fontFamily = RobotoMonoFontFamily
             )
         }
 
         Icon(
             Icons.Default.ChevronRight,
             contentDescription = "View details",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            tint = TextSecondary
         )
     }
 }

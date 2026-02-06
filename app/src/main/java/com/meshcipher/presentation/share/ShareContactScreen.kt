@@ -1,7 +1,9 @@
 package com.meshcipher.presentation.share
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -11,10 +13,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.meshcipher.presentation.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,14 +29,29 @@ fun ShareContactScreen(
     val qrBitmap by viewModel.qrBitmap.collectAsState()
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text("Share Contact") },
+                title = {
+                    Text(
+                        "Share Contact",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         }
     ) { padding ->
@@ -47,25 +65,34 @@ fun ShareContactScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             qrBitmap?.let { bitmap ->
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Contact QR Code",
-                    modifier = Modifier.size(300.dp)
-                )
-            } ?: CircularProgressIndicator()
+                Box(
+                    modifier = Modifier
+                        .border(2.dp, TextPrimary, RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Contact QR Code",
+                        modifier = Modifier.size(280.dp)
+                    )
+                }
+            } ?: CircularProgressIndicator(color = SecureGreen)
 
             Spacer(modifier = Modifier.height(24.dp))
 
             contactCard?.let { card ->
                 Text(
                     text = "Verification Code:",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = card.verificationCode,
                     style = MaterialTheme.typography.headlineLarge,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = RobotoMonoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = SecureGreen
                 )
             }
 
@@ -74,7 +101,7 @@ fun ShareContactScreen(
             Text(
                 text = "Have your contact scan this code to add you",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = TextSecondary,
                 textAlign = TextAlign.Center
             )
         }

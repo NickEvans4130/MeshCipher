@@ -2,50 +2,47 @@ package com.meshcipher.presentation.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light theme colors
-val md_theme_light_primary = Color(0xFF006C4C)
-val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-val md_theme_light_primaryContainer = Color(0xFF89F8C7)
-val md_theme_light_onPrimaryContainer = Color(0xFF002114)
-val md_theme_light_secondary = Color(0xFF4D6357)
-val md_theme_light_onSecondary = Color(0xFFFFFFFF)
-val md_theme_light_secondaryContainer = Color(0xFFCFE9D9)
-val md_theme_light_onSecondaryContainer = Color(0xFF092016)
-val md_theme_light_tertiary = Color(0xFF3D6373)
-val md_theme_light_onTertiary = Color(0xFFFFFFFF)
-val md_theme_light_tertiaryContainer = Color(0xFFC1E8FB)
-val md_theme_light_onTertiaryContainer = Color(0xFF001F29)
-val md_theme_light_error = Color(0xFFBA1A1A)
-val md_theme_light_errorContainer = Color(0xFFFFDAD6)
-val md_theme_light_onError = Color(0xFFFFFFFF)
-val md_theme_light_onErrorContainer = Color(0xFF410002)
-val md_theme_light_background = Color(0xFFFBFDF9)
-val md_theme_light_onBackground = Color(0xFF191C1A)
-val md_theme_light_surface = Color(0xFFFBFDF9)
-val md_theme_light_onSurface = Color(0xFF191C1A)
-val md_theme_light_surfaceVariant = Color(0xFFDBE5DD)
-val md_theme_light_onSurfaceVariant = Color(0xFF404943)
+// Tactical Dark Palette
+val TacticalBackground = Color(0xFF121212)
+val TacticalSurface = Color(0xFF1E1E1E)
+val TacticalElevated = Color(0xFF252525)
 
-// Dark theme colors
-val md_theme_dark_primary = Color(0xFF6CDBAC)
-val md_theme_dark_onPrimary = Color(0xFF003826)
-val md_theme_dark_primaryContainer = Color(0xFF005138)
-val md_theme_dark_onPrimaryContainer = Color(0xFF89F8C7)
-val md_theme_dark_secondary = Color(0xFFB3CCBE)
-val md_theme_dark_onSecondary = Color(0xFF1F352A)
-val md_theme_dark_secondaryContainer = Color(0xFF354B40)
-val md_theme_dark_onSecondaryContainer = Color(0xFFCFE9D9)
-val md_theme_dark_tertiary = Color(0xFFA5CCDF)
-val md_theme_dark_onTertiary = Color(0xFF073543)
-val md_theme_dark_tertiaryContainer = Color(0xFF244C5B)
-val md_theme_dark_onTertiaryContainer = Color(0xFFC1E8FB)
-val md_theme_dark_error = Color(0xFFFFB4AB)
-val md_theme_dark_errorContainer = Color(0xFF93000A)
-val md_theme_dark_onError = Color(0xFF690005)
-val md_theme_dark_onErrorContainer = Color(0xFFFFDAD6)
-val md_theme_dark_background = Color(0xFF191C1A)
-val md_theme_dark_onBackground = Color(0xFFE1E3DF)
-val md_theme_dark_surface = Color(0xFF191C1A)
-val md_theme_dark_onSurface = Color(0xFFE1E3DF)
-val md_theme_dark_surfaceVariant = Color(0xFF404943)
-val md_theme_dark_onSurfaceVariant = Color(0xFFBFC9C1)
+// Accent Colors
+val SecureGreen = Color(0xFF76D166)
+val SecureGreenDark = Color(0xFF5BAF4D)
+val MutedPurple = Color(0xFF9C27B0)
+val SkyBlue = Color(0xFF03A9F4)
+
+// Text Colors
+val TextPrimary = Color(0xFFFFFFFF)
+val TextSecondary = Color(0xFFB0B0B0)
+val TextTertiary = Color(0xFF6B6B6B)
+val TextMono = Color(0xFF8E8E8E)
+
+// Status Colors
+val StatusActive = Color(0xFF76D166)
+val StatusWarning = Color(0xFFFFA726)
+val StatusError = Color(0xFFEF5350)
+val StatusNeutral = Color(0xFF78909C)
+
+// Dividers
+val DividerSubtle = Color(0xFF2A2A2A)
+val DividerMedium = Color(0xFF404040)
+
+// Special
+val EncryptionGhost = Color(0x1AFFFFFF)
+
+// Avatar palette
+val AvatarPurple = Color(0xFF9C27B0)
+val AvatarBlue = Color(0xFF03A9F4)
+val AvatarGreen = Color(0xFF76D166)
+val AvatarOrange = Color(0xFFFF6F00)
+val AvatarTeal = Color(0xFF00897B)
+val AvatarPink = Color(0xFFD81B60)
+val AvatarDeepPurple = Color(0xFF5E35B1)
+val AvatarDeepBlue = Color(0xFF1976D2)
+
+// On-color variants
+val OnSecureGreen = Color(0xFF000000)
+val OnSurface = Color(0xFFFFFFFF)
+val OnBackground = Color(0xFFE1E3DF)

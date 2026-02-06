@@ -8,13 +8,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.presentation.navigation.MeshCipherNavigation
 import com.meshcipher.presentation.onboarding.OnboardingScreen
-import com.meshcipher.presentation.theme.MeshCipherTheme
+import com.meshcipher.presentation.theme.TacticalMeshCipherTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -27,7 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MeshCipherTheme {
+            TacticalMeshCipherTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

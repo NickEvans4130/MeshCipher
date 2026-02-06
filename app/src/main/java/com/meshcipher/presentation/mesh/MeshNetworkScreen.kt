@@ -4,9 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.meshcipher.domain.model.MeshPeer
 import com.meshcipher.domain.model.SignalStrength
+import com.meshcipher.presentation.theme.*
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
@@ -63,14 +66,29 @@ fun MeshNetworkScreen(
     }
 
     Scaffold(
+        containerColor = TacticalBackground,
         topBar = {
             TopAppBar(
-                title = { Text("Mesh Network") },
+                title = {
+                    Text(
+                        "Mesh Network",
+                        color = TextPrimary,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TacticalBackground
+                )
             )
         }
     ) { padding ->
@@ -82,24 +100,28 @@ fun MeshNetworkScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            // Your User ID card - needed for adding contacts
+            // Your User ID card
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, SecureGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    )
+                        containerColor = SecureGreen.copy(alpha = 0.08f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Your User ID",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
                         )
                         Text(
                             text = "Share this with contacts so they can message you via mesh",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = TextSecondary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
@@ -109,8 +131,10 @@ fun MeshNetworkScreen(
                         ) {
                             Text(
                                 text = myUserId ?: "Loading...",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontFamily = RobotoMonoFontFamily,
                                 fontWeight = FontWeight.Medium,
+                                color = TextMono,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
@@ -131,11 +155,7 @@ fun MeshNetworkScreen(
                                 Icon(
                                     Icons.Default.ContentCopy,
                                     contentDescription = "Copy ID",
-                                    tint = if (showCopiedMessage) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
+                                    tint = if (showCopiedMessage) SecureGreen else TextSecondary
                                 )
                             }
                         }
@@ -143,7 +163,7 @@ fun MeshNetworkScreen(
                             Text(
                                 text = "Copied to clipboard",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = SecureGreen
                             )
                         }
                     }
@@ -170,12 +190,21 @@ fun MeshNetworkScreen(
                     Text(
                         text = "Network Topology",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                 }
 
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
                         MeshNetworkVisualization(
                             peers = peers,
                             modifier = Modifier
@@ -193,7 +222,8 @@ fun MeshNetworkScreen(
                     Text(
                         text = "Discovered Peers (${peers.size})",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                 }
 
@@ -203,10 +233,13 @@ fun MeshNetworkScreen(
             } else if (meshEnabled && hasPermissions) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
+                            containerColor = TacticalSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -218,17 +251,18 @@ fun MeshNetworkScreen(
                                 Icons.Default.BluetoothSearching,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "Scanning for nearby devices...",
-                                style = MaterialTheme.typography.bodyLarge
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextPrimary
                             )
                             Text(
                                 text = "Make sure other MeshCipher devices are nearby with Bluetooth enabled",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextSecondary
                             )
                         }
                     }
@@ -249,7 +283,15 @@ private fun MeshStatusCard(
     bluetoothSupported: Boolean,
     bluetoothEnabled: Boolean
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = TacticalSurface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -259,16 +301,13 @@ private fun MeshStatusCard(
                 Text(
                     text = "Mesh Status",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
                 Icon(
                     Icons.Default.Bluetooth,
                     contentDescription = null,
-                    tint = if (meshEnabled && bluetoothEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    tint = if (meshEnabled && bluetoothEnabled) SecureGreen else TextSecondary
                 )
             }
 
@@ -290,6 +329,13 @@ private fun MeshStatusCard(
 
 @Composable
 private fun StatusRow(label: String, value: String) {
+    val valueColor = when (value) {
+        "Active", "Enabled", "Granted" -> StatusActive
+        "Disabled", "Not supported", "Required" -> StatusWarning
+        "Inactive" -> TextTertiary
+        else -> TextPrimary
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -299,12 +345,14 @@ private fun StatusRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = TextSecondary
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = RobotoMonoFontFamily,
+            fontWeight = FontWeight.Medium,
+            color = valueColor
         )
     }
 }
@@ -314,9 +362,6 @@ fun MeshNetworkVisualization(
     peers: List<MeshPeer>,
     modifier: Modifier = Modifier
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val surfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
-
     Canvas(modifier = modifier) {
         val centerX = size.width / 2
         val centerY = size.height / 2
@@ -324,12 +369,12 @@ fun MeshNetworkVisualization(
 
         // Center node (this device)
         drawCircle(
-            color = primaryColor,
+            color = SecureGreen,
             radius = 24f,
             center = Offset(centerX, centerY)
         )
         drawCircle(
-            color = primaryColor.copy(alpha = 0.2f),
+            color = SecureGreen.copy(alpha = 0.2f),
             radius = 36f,
             center = Offset(centerX, centerY)
         )
@@ -344,10 +389,10 @@ fun MeshNetworkVisualization(
 
             // Connection line colored by signal strength
             val lineColor = when (peer.signalStrength) {
-                SignalStrength.EXCELLENT -> Color(0xFF4CAF50)
+                SignalStrength.EXCELLENT -> StatusActive
                 SignalStrength.GOOD -> Color(0xFF8BC34A)
-                SignalStrength.FAIR -> Color(0xFFFF9800)
-                SignalStrength.WEAK -> Color(0xFFF44336)
+                SignalStrength.FAIR -> StatusWarning
+                SignalStrength.WEAK -> StatusError
             }
 
             drawLine(
@@ -359,9 +404,9 @@ fun MeshNetworkVisualization(
 
             // Peer node
             val peerColor = if (peer.isContact) {
-                Color(0xFF4CAF50)
+                SecureGreen
             } else {
-                surfaceVariantColor
+                TextSecondary
             }
 
             drawCircle(
@@ -373,7 +418,7 @@ fun MeshNetworkVisualization(
             // Multi-hop indicator (red ring)
             if (peer.hopCount > 1) {
                 drawCircle(
-                    color = Color(0xFFF44336),
+                    color = StatusError,
                     radius = 20f,
                     center = Offset(peerX, peerY),
                     style = Stroke(width = 2f)
@@ -385,7 +430,15 @@ fun MeshNetworkVisualization(
 
 @Composable
 fun PeerListItem(peer: MeshPeer) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, DividerSubtle, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = TacticalSurface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -397,6 +450,7 @@ fun PeerListItem(peer: MeshPeer) {
                     text = peer.displayName ?: peer.deviceId,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -409,8 +463,9 @@ fun PeerListItem(peer: MeshPeer) {
                             append(" | via ${peer.reachableVia.take(8)}...")
                         }
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = RobotoMonoFontFamily,
+                    color = TextMono
                 )
             }
 
@@ -424,10 +479,10 @@ fun PeerListItem(peer: MeshPeer) {
             }
 
             val signalColor = when (peer.signalStrength) {
-                SignalStrength.EXCELLENT -> Color(0xFF4CAF50)
+                SignalStrength.EXCELLENT -> StatusActive
                 SignalStrength.GOOD -> Color(0xFF8BC34A)
-                SignalStrength.FAIR -> Color(0xFFFF9800)
-                SignalStrength.WEAK -> Color(0xFFF44336)
+                SignalStrength.FAIR -> StatusWarning
+                SignalStrength.WEAK -> StatusError
             }
 
             Icon(
