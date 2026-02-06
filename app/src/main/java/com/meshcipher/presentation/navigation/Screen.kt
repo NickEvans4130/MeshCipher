@@ -7,11 +7,12 @@ sealed class Screen(val route: String) {
         fun createRoute(conversationId: String) = "chat/$conversationId"
     }
     object Contacts : Screen("contacts")
-    object AddContact : Screen("add_contact?userId={userId}") {
-        fun createRoute(userId: String? = null) = if (userId != null) {
-            "add_contact?userId=$userId"
-        } else {
-            "add_contact"
+    object AddContact : Screen("add_contact?userId={userId}&onionAddress={onionAddress}") {
+        fun createRoute(userId: String? = null, onionAddress: String? = null): String {
+            val params = mutableListOf<String>()
+            if (userId != null) params.add("userId=$userId")
+            if (onionAddress != null) params.add("onionAddress=$onionAddress")
+            return if (params.isEmpty()) "add_contact" else "add_contact?${params.joinToString("&")}"
         }
     }
     object ContactDetail : Screen("contact/{contactId}") {
@@ -22,4 +23,5 @@ sealed class Screen(val route: String) {
     object ScanContact : Screen("scan_contact")
     object MeshNetwork : Screen("mesh_network")
     object WifiDirect : Screen("wifi_direct")
+    object P2PTor : Screen("p2p_tor")
 }

@@ -16,6 +16,7 @@ import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
+import com.meshcipher.presentation.p2ptor.P2PTorScreen
 import com.meshcipher.presentation.wifidirect.WifiDirectScreen
 
 @Composable
@@ -94,6 +95,11 @@ fun MeshCipherNavigation(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("onionAddress") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) {
@@ -119,6 +125,9 @@ fun MeshCipherNavigation(
                 },
                 onWifiDirectClick = {
                     navController.navigate(Screen.WifiDirect.route)
+                },
+                onP2PTorClick = {
+                    navController.navigate(Screen.P2PTor.route)
                 }
             )
         }
@@ -138,8 +147,13 @@ fun MeshCipherNavigation(
         composable(Screen.ScanContact.route) {
             ScanContactScreen(
                 onContactScanned = { contactCard ->
-                    // Navigate to AddContact with pre-filled userId
-                    navController.navigate(Screen.AddContact.createRoute(contactCard.userId)) {
+                    // Navigate to AddContact with pre-filled userId and onionAddress
+                    navController.navigate(
+                        Screen.AddContact.createRoute(
+                            userId = contactCard.userId,
+                            onionAddress = contactCard.onionAddress
+                        )
+                    ) {
                         popUpTo(Screen.ScanContact.route) { inclusive = true }
                     }
                 },
@@ -149,6 +163,12 @@ fun MeshCipherNavigation(
 
         composable(Screen.WifiDirect.route) {
             WifiDirectScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.P2PTor.route) {
+            P2PTorScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }

@@ -10,7 +10,8 @@ data class ContactCard(
     val deviceId: String,
     val deviceName: String,
     val displayName: String? = null,
-    val verificationCode: String
+    val verificationCode: String,
+    val onionAddress: String? = null
 ) {
     fun toQRString(): String {
         val json = JSONObject().apply {
@@ -19,6 +20,9 @@ data class ContactCard(
             put("deviceId", deviceId)
             put("deviceName", deviceName)
             put("verificationCode", verificationCode)
+            if (onionAddress != null) {
+                put("onionAddress", onionAddress)
+            }
         }
 
         return "meshcipher://add?data=${Base64.encodeToString(
@@ -50,7 +54,8 @@ data class ContactCard(
                     publicKey = Base64.decode(json.getString("publicKey"), Base64.NO_WRAP),
                     deviceId = json.getString("deviceId"),
                     deviceName = json.getString("deviceName"),
-                    verificationCode = json.getString("verificationCode")
+                    verificationCode = json.getString("verificationCode"),
+                    onionAddress = if (json.has("onionAddress")) json.getString("onionAddress") else null
                 )
             } catch (e: Exception) {
                 null

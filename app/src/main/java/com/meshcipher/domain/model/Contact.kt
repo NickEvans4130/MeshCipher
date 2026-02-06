@@ -8,7 +8,8 @@ data class Contact(
     val publicKey: ByteArray,
     val identityKey: ByteArray,
     val signalProtocolAddress: SignalProtocolAddress,
-    val lastSeen: Long = System.currentTimeMillis()
+    val lastSeen: Long = System.currentTimeMillis(),
+    val onionAddress: String? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

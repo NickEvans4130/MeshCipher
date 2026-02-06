@@ -28,7 +28,8 @@ class TransportManager @Inject constructor(
     private val gson: Gson,
     private val retrofit: Retrofit,
     private val bluetoothMeshTransport: BluetoothMeshTransport,
-    private val wifiDirectTransport: WifiDirectTransport
+    private val wifiDirectTransport: WifiDirectTransport,
+    private val p2pTransport: P2PTransport
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -67,9 +68,13 @@ class TransportManager @Inject constructor(
 
     fun getWifiDirectTransport(): WifiDirectTransport = wifiDirectTransport
 
+    fun getP2PTransport(): P2PTransport = p2pTransport
+
     fun isMeshAvailable(): Boolean = bluetoothMeshTransport.isAvailable()
 
     fun isWifiDirectAvailable(): Boolean = wifiDirectTransport.isAvailable()
+
+    fun isP2PAvailable(): Boolean = p2pTransport.isAvailable()
 
     suspend fun sendWithFallback(
         senderId: String,
@@ -77,6 +82,37 @@ class TransportManager @Inject constructor(
         encryptedContent: ByteArray
     ): Result<String> {
         val mode = currentMode.get()
+
+        // P2P_TOR: Try P2P Tor first, then WiFi Direct, then Bluetooth mesh
+        if (mode == ConnectionMode.P2P_TOR) {
+            if (p2pTransport.isAvailable()) {
+                val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent)
+                if (p2pResult.isSuccess) {
+                    Timber.d("Sent via P2P Tor to %s", recipientId)
+                    return p2pResult
+                }
+                val p2pError = p2pResult.exceptionOrNull()?.message ?: "P2P send failed"
+                Timber.d("P2P Tor failed: %s, trying WiFi Direct", p2pError)
+                // If no other transports available, return the actual P2P error
+                if (!wifiDirectTransport.isAvailable() && !bluetoothMeshTransport.isAvailable()) {
+                    return p2pResult
+                }
+            } else {
+                Timber.d("P2P Tor not available (state: not running)")
+            }
+            if (wifiDirectTransport.isAvailable()) {
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
+                if (wifiResult.isSuccess) return wifiResult
+                Timber.d("WiFi Direct failed, trying Bluetooth mesh")
+            }
+            if (bluetoothMeshTransport.isAvailable()) {
+                return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            }
+            return Result.failure(Exception(
+                if (p2pTransport.isAvailable()) "P2P Tor send failed"
+                else "P2P Tor is not running. Start it from Settings > P2P Tor."
+            ))
+        }
 
         // P2P_ONLY: Try WiFi Direct first (better range/bandwidth), then Bluetooth mesh
         if (mode == ConnectionMode.P2P_ONLY) {
@@ -88,8 +124,17 @@ class TransportManager @Inject constructor(
             return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
         }
 
-        // Always try WiFi Direct first when available - direct P2P is preferred
-        // over routing through a relay server
+        // Try P2P Tor first if available and recipient is reachable
+        if (p2pTransport.isAvailable() && p2pTransport.isRecipientReachable(recipientId)) {
+            val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent)
+            if (p2pResult.isSuccess) {
+                Timber.d("Sent via P2P Tor to %s", recipientId)
+                return p2pResult
+            }
+            Timber.d("P2P Tor send failed, trying WiFi Direct")
+        }
+
+        // Try WiFi Direct when available
         if (wifiDirectTransport.isAvailable()) {
             val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent)
             if (wifiResult.isSuccess) {

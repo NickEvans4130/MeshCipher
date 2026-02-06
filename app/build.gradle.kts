@@ -127,6 +127,14 @@ dependencies {
     // JSON
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // Embedded Tor (Guardian Project)
+    implementation("info.guardianproject:tor-android:0.4.8.22") {
+        exclude(group = "org.jetbrains.kotlin")
+    }
+    implementation("info.guardianproject:jtorctl:0.4.5.7") {
+        exclude(group = "org.jetbrains.kotlin")
+    }
+
     // Networking - Retrofit + OkHttp
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")

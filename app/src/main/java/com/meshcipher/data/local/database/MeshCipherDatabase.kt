@@ -15,7 +15,7 @@ import com.meshcipher.data.local.entity.MessageEntity
         ContactEntity::class,
         ConversationEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -41,6 +41,13 @@ abstract class MeshCipherDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE conversations ADD COLUMN message_expiry_mode TEXT")
+            }
+        }
+
+        // Migration from version 3 to version 4 (add onion_address to contacts)
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contacts ADD COLUMN onion_address TEXT")
             }
         }
     }

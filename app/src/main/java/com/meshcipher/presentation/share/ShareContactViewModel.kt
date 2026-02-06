@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.tor.EmbeddedTorManager
 import com.meshcipher.domain.model.ContactCard
 import com.meshcipher.util.QRCodeGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +17,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ShareContactViewModel @Inject constructor(
     private val identityManager: IdentityManager,
-    private val qrCodeGenerator: QRCodeGenerator
+    private val qrCodeGenerator: QRCodeGenerator,
+    private val embeddedTorManager: EmbeddedTorManager
 ) : ViewModel() {
 
     private val _contactCard = MutableStateFlow<ContactCard?>(null)
@@ -40,7 +42,8 @@ class ShareContactViewModel @Inject constructor(
                 publicKey = identity.hardwarePublicKey,
                 deviceId = identity.deviceId,
                 deviceName = identity.deviceName,
-                verificationCode = verificationCode
+                verificationCode = verificationCode,
+                onionAddress = embeddedTorManager.getOnionAddress()
             )
 
             _contactCard.value = card

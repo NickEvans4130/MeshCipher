@@ -27,6 +27,8 @@ class AddContactViewModel @Inject constructor(
 
     val isFromQRScan: Boolean = savedStateHandle.get<String>("userId") != null
 
+    val scannedOnionAddress: String? = savedStateHandle.get<String>("onionAddress")
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
@@ -55,7 +57,8 @@ class AddContactViewModel @Inject constructor(
                         _identifier.value,
                         1
                     ),
-                    lastSeen = System.currentTimeMillis()
+                    lastSeen = System.currentTimeMillis(),
+                    onionAddress = scannedOnionAddress
                 )
 
                 contactRepository.insertContact(contact)

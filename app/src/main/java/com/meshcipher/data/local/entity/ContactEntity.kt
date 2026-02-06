@@ -16,5 +16,6 @@ data class ContactEntity(
     @ColumnInfo(name = "identity_key") val identityKey: ByteArray,
     @ColumnInfo(name = "signal_protocol_address") val signalProtocolAddress: String,
     @ColumnInfo(name = "last_seen") val lastSeen: Long,
-    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis()
+    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "onion_address") val onionAddress: String? = null
 )

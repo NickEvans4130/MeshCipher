@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -50,6 +51,7 @@ fun SettingsScreen(
     onShareContactClick: () -> Unit = {},
     onScanContactClick: () -> Unit = {},
     onWifiDirectClick: () -> Unit = {},
+    onP2PTorClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -273,6 +275,15 @@ fun SettingsScreen(
                 onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_ONLY) }
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ConnectionModeCard(
+                title = "P2P Tor",
+                description = "Direct messaging via .onion addresses. No relay server needed.",
+                selected = connectionMode == ConnectionMode.P2P_TOR,
+                onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_TOR) }
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // TOR Status Section
@@ -478,6 +489,61 @@ fun SettingsScreen(
                             )
                             Text(
                                 text = "High-speed transfers up to 100m range",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // P2P Tor Section
+            Text(
+                text = "P2P Tor",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onP2PTorClick)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            Icons.Default.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "P2P Tor Hidden Service",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Direct messaging via .onion addresses",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

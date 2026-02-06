@@ -49,7 +49,8 @@ class ContactRepositoryImpl @Inject constructor(
                 signalProtocolAddress,
                 1
             ),
-            lastSeen = lastSeen
+            lastSeen = lastSeen,
+            onionAddress = onionAddress
         )
     }
 
@@ -60,7 +61,8 @@ class ContactRepositoryImpl @Inject constructor(
             publicKey = publicKey,
             identityKey = identityKey,
             signalProtocolAddress = signalProtocolAddress.name,
-            lastSeen = lastSeen
+            lastSeen = lastSeen,
+            onionAddress = onionAddress
         )
     }
 }

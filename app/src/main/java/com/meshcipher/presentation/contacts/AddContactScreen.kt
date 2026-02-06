@@ -96,6 +96,22 @@ fun AddContactScreen(
                 }
             )
 
+            if (viewModel.scannedOnionAddress != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = viewModel.scannedOnionAddress,
+                    onValueChange = {},
+                    label = { Text("Onion Address") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    readOnly = true,
+                    supportingText = {
+                        Text("P2P address from scanned QR code")
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(

@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.*
 import com.meshcipher.data.cleanup.MessageCleanupManager
+import com.meshcipher.data.transport.P2PTransport
 import com.meshcipher.data.transport.WifiDirectTransport
 import com.meshcipher.data.worker.MessageCleanupWorker
 import com.meshcipher.data.worker.MessageSyncWorker
@@ -25,6 +26,9 @@ class MeshCipherApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var wifiDirectTransport: WifiDirectTransport
 
+    @Inject
+    lateinit var p2pTransport: P2PTransport
+
     override fun onCreate() {
         super.onCreate()
 
@@ -38,11 +42,17 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         scheduleMessageCleanup()
         setupAppLifecycleObserver()
         initializeWifiDirect()
+        initializeP2PTransport()
     }
 
     private fun initializeWifiDirect() {
         wifiDirectTransport.initialize()
         Timber.d("WiFi Direct transport initialized")
+    }
+
+    private fun initializeP2PTransport() {
+        p2pTransport.initialize()
+        Timber.d("P2P transport initialized")
     }
 
     override val workManagerConfiguration: Configuration

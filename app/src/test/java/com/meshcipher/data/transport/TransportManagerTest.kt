@@ -20,6 +20,8 @@ class TransportManagerTest {
     private lateinit var gson: Gson
     private lateinit var retrofit: Retrofit
     private lateinit var bluetoothMeshTransport: BluetoothMeshTransport
+    private lateinit var wifiDirectTransport: WifiDirectTransport
+    private lateinit var p2pTransport: P2PTransport
     private lateinit var transportManager: TransportManager
 
     @Before
@@ -30,9 +32,13 @@ class TransportManagerTest {
         gson = Gson()
         retrofit = mockk(relaxed = true)
         bluetoothMeshTransport = mockk()
+        wifiDirectTransport = mockk()
+        p2pTransport = mockk()
 
         every { appPreferences.connectionMode } returns flowOf(ConnectionMode.DIRECT.name)
         every { bluetoothMeshTransport.isAvailable() } returns false
+        every { wifiDirectTransport.isAvailable() } returns false
+        every { p2pTransport.isAvailable() } returns false
 
         transportManager = TransportManager(
             directTransport = directTransport,
@@ -40,7 +46,9 @@ class TransportManagerTest {
             torManager = torManager,
             gson = gson,
             retrofit = retrofit,
-            bluetoothMeshTransport = bluetoothMeshTransport
+            bluetoothMeshTransport = bluetoothMeshTransport,
+            wifiDirectTransport = wifiDirectTransport,
+            p2pTransport = p2pTransport
         )
     }
 

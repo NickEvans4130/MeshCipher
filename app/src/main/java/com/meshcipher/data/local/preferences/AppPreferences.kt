@@ -27,6 +27,7 @@ class AppPreferences @Inject constructor(
         val CONNECTION_MODE = stringPreferencesKey("connection_mode")
         val MESH_ENABLED = booleanPreferencesKey("mesh_enabled")
         val MESSAGE_EXPIRY_MODE = stringPreferencesKey("message_expiry_mode")
+        val ONION_ADDRESS = stringPreferencesKey("onion_address")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -86,6 +87,16 @@ class AppPreferences @Inject constructor(
     suspend fun setMessageExpiryMode(mode: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.MESSAGE_EXPIRY_MODE] = mode
+        }
+    }
+
+    val onionAddress: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.ONION_ADDRESS]
+    }
+
+    suspend fun setOnionAddress(address: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.ONION_ADDRESS] = address
         }
     }
 }
