@@ -24,4 +24,5 @@ sealed class Screen(val route: String) {
     object MeshNetwork : Screen("mesh_network")
     object WifiDirect : Screen("wifi_direct")
     object P2PTor : Screen("p2p_tor")
+    object Guide : Screen("guide")
 }

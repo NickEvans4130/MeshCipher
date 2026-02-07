@@ -1,34 +1,76 @@
 # Tech Stack
 
-MeshCipher leverages a modern Android technology stack designed for performance, security, and offline capabilities.
+## Core
 
-## Core Language & Runtime
-*   **Kotlin**: The primary language for the entire codebase. Used for its conciseness, null-safety, and coroutine support.
-*   **Coroutines & Flow**: Used for asynchronous programming and reactive streams.
-    *   *Coroutines*: Used for one-shot async operations (database writes, network calls).
-    *   *Flow*: Used for observing data changes (database updates, incoming messages).
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Kotlin | 1.9.24 | Primary language |
+| Android Gradle Plugin | 8.5.2 | Build system |
+| KSP | 1.9.24-1.0.20 | Kotlin Symbol Processing (Hilt, Room codegen) |
+| JVM Target | 17 | Bytecode target |
+| Min SDK | 26 | Android 8.0 Oreo |
+| Target SDK | 34 | Android 14 |
 
-## User Interface
-*   **Jetpack Compose**: The modern toolkit for building native UI. It allows for declarative UI definitions.
-*   **Material Design 3**: The visual design system used throughout the app.
+## UI
 
-## Data Persistence & Encryption
-*   **Room Database**: The abstraction layer over SQLite.
-*   **SQLCipher**: An extension to SQLite that provides transparent 256-bit AES encryption of the database file. This ensures that all local data is encrypted at rest.
-*   **EncryptedSharedPreferences**: Used to store sensitive key-value pairs (like session tokens) securely using the Android Keystore.
-*   **IPFS (InterPlanetary File System)**: Used for decentralized, off-chain storage of heavy media files.
+| Library | Purpose |
+|---------|---------|
+| Jetpack Compose (BOM 2023.10.01) | Declarative UI toolkit |
+| Material Design 3 | Design system and components |
+| Compose Navigation | Single-activity navigation with type-safe routes |
+| CameraX | QR code scanning via camera preview and image analysis |
+| Hilt Navigation Compose | ViewModel injection in composables |
 
-## Cryptography & Security
-*   **Libsignal (Signal Protocol)**: The gold standard for end-to-end encryption. Provides `Double Ratchet` algorithm for perfect forward secrecy and deniable authentication.
-*   **Android Keystore System**: Hardware-backed storage for private keys.
-*   **Bouncy Castle**: Used for additional cryptographic primitives not available in the standard library.
+## Data & Persistence
 
-## Networking & Transport
-*   **Retrofit + OkHttp**: For standard REST API communication with the relay server.
-*   **Bluetooth Low Energy (BLE)**: Used for the offline mesh network.
-*   **Orbot / Tor**: Integrated for anonymizing internet traffic.
+| Library | Purpose |
+|---------|---------|
+| Room | SQLite ORM with Flow-based reactive queries |
+| SQLCipher | AES-256 transparent database encryption |
+| DataStore Preferences | Key-value preferences (connection mode, expiry settings) |
+| EncryptedSharedPreferences | Sensitive values (tokens, Tor private keys) |
 
-## Architecture & Tools
-*   **Hilt**: Dependency Injection framework built on top of Dagger.
-*   **Timber**: For logging.
-*   **Gradle (Kotlin DSL)**: Build system.
+## Cryptography
+
+| Library | Purpose |
+|---------|---------|
+| libsignal-client | Signal Protocol (X3DH key agreement, Double Ratchet) |
+| Android Keystore | Hardware-backed Ed25519 key storage |
+| javax.crypto (AES/GCM/NoPadding) | Media encryption (256-bit keys, 128-bit GCM tags) |
+| java.security (SHA-256) | User ID derivation from public key |
+| java.util.Base64 | Encoding (used instead of android.util.Base64 for testability) |
+
+## Networking
+
+| Library | Purpose |
+|---------|---------|
+| Retrofit 2 + OkHttp | REST API client for relay server |
+| OkHttp SOCKS Proxy | Tor relay mode (proxy through 127.0.0.1:9050) |
+| Android WiFi P2P (WifiP2pManager) | WiFi Direct discovery and group formation |
+| Android Bluetooth LE | BLE advertising, scanning, GATT server/client |
+| Guardian Project tor-android (org.torproject.jni) | Embedded Tor daemon for P2P hidden services |
+| net.freehaven.tor.control (jtorctl) | Tor control port commands (hidden service management) |
+
+## Architecture
+
+| Library | Purpose |
+|---------|---------|
+| Hilt (Dagger) | Dependency injection |
+| Kotlin Coroutines + Flow | Async operations and reactive streams |
+| ViewModel + StateFlow | MVVM state management |
+| ProcessLifecycleOwner | App lifecycle detection (disappearing messages on close) |
+| WorkManager | Scheduled background tasks (message sync, cleanup) |
+
+## Utilities
+
+| Library | Purpose |
+|---------|---------|
+| Timber | Structured logging |
+| Gson | JSON serialization (MediaMessageEnvelope, P2PMessage) |
+| ZXing | QR code generation and scanning |
+
+## Known Dependency Conflicts
+
+- **tor-android** pulls Kotlin stdlib 2.3.0 transitively. Must exclude `org.jetbrains.kotlin` group from the dependency to avoid version conflicts with Kotlin 1.9.24.
+- **jtorctl** `EventHandler.newDescriptors` uses `MutableList<String>?` signature, not `java.util.List`.
+- **Compose BOM 2023.10.01** uses `LinearProgressIndicator(progress: Float)` (not the lambda overload introduced later).

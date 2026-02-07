@@ -16,6 +16,7 @@ import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
+import com.meshcipher.presentation.guide.GuideScreen
 import com.meshcipher.presentation.p2ptor.P2PTorScreen
 import com.meshcipher.presentation.wifidirect.WifiDirectScreen
 
@@ -128,6 +129,9 @@ fun MeshCipherNavigation(
                 },
                 onP2PTorClick = {
                     navController.navigate(Screen.P2PTor.route)
+                },
+                onGuideClick = {
+                    navController.navigate(Screen.Guide.route)
                 }
             )
         }
@@ -170,6 +174,12 @@ fun MeshCipherNavigation(
         composable(Screen.P2PTor.route) {
             P2PTorScreen(
                 onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Guide.route) {
+            GuideScreen(
+                onFinish = { navController.popBackStack() }
             )
         }
     }

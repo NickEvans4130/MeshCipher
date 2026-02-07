@@ -1,54 +1,197 @@
 # Data Storage
 
-MeshCipher persists data locally on the Android device using a secure, encrypted database.
+## Database
 
-## Database Technology
+- **Engine**: SQLite via Room Persistence Library
+- **Encryption**: SQLCipher (AES-256-CBC with HMAC-SHA256 page authentication)
+- **Version**: 4
+- **Key Storage**: Database encryption key stored in EncryptedSharedPreferences (backed by Android Keystore master key)
 
-*   **Engine**: SQLite
-*   **ORM**: Room Persistence Library
-*   **Encryption**: SQLCipher (AES-256)
+## Entities
 
-## Database Schema
+### ContactEntity (`contacts`)
 
-The database consists of three primary tables relating to the core chat functionality.
+```kotlin
+@Entity(tableName = "contacts", indices = [Index("display_name")])
+data class ContactEntity(
+    @PrimaryKey
+    val id: String,                       // userId (SHA-256 hash of public key)
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    @ColumnInfo(name = "public_key")
+    val publicKey: ByteArray,             // Ed25519 public key
+    @ColumnInfo(name = "identity_key")
+    val identityKey: ByteArray,           // Signal Protocol identity key (Curve25519)
+    @ColumnInfo(name = "signal_protocol_address")
+    val signalProtocolAddress: String,    // "userId@deviceId"
+    @ColumnInfo(name = "last_seen")
+    val lastSeen: Long,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long,
+    @ColumnInfo(name = "onion_address")
+    val onionAddress: String? = null      // .onion address for P2P Tor (added in migration 3->4)
+)
+```
 
-### 1. Contacts Table (`contacts`)
-Stores information about known users.
+### ConversationEntity (`conversations`)
 
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `id` | String (PK) | The internal UUID for the contact. |
-| `user_id` | String | The public-key derived ID (visible to user). |
-| `public_key` | Blob | The raw Ed25519 public key. |
-| `display_name`| String | User-assigned local name for the contact. |
-| `is_verified` | Boolean | True if QR code verification was improved. |
+```kotlin
+@Entity(
+    tableName = "conversations",
+    indices = [Index("last_message_timestamp", orders = [Order.DESC])]
+)
+data class ConversationEntity(
+    @PrimaryKey
+    val id: String,                       // UUID
+    @ColumnInfo(name = "contact_id")
+    val contactId: String,
+    @ColumnInfo(name = "last_message_id")
+    val lastMessageId: String?,
+    @ColumnInfo(name = "last_message_timestamp")
+    val lastMessageTimestamp: Long?,
+    @ColumnInfo(name = "unread_count")
+    val unreadCount: Int,
+    @ColumnInfo(name = "is_pinned")
+    val isPinned: Boolean,
+    @ColumnInfo(name = "message_expiry_mode")
+    val messageExpiryMode: String? = null // MessageExpiryMode.name (added in migration 1->3)
+)
+```
 
-### 2. Conversations Table (`conversations`)
-Represents a chat thread between the user and a contact.
+### MessageEntity (`messages`)
 
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `id` | String (PK) | UUID. |
-| `contact_id` | String (FK) | Link to `contacts`. |
-| `last_msg_id` | String | ID of the most recent message (for previews). |
-| `unread_count`| Integer | Number of unread messages. |
+```kotlin
+@Entity(
+    tableName = "messages",
+    foreignKeys = [ForeignKey(
+        entity = ConversationEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["conversation_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
+    indices = [Index("conversation_id"), Index("timestamp")]
+)
+data class MessageEntity(
+    @PrimaryKey
+    val id: String,                        // UUID
+    @ColumnInfo(name = "conversation_id")
+    val conversationId: String,
+    @ColumnInfo(name = "sender_id")
+    val senderId: String,
+    @ColumnInfo(name = "recipient_id")
+    val recipientId: String,
+    @ColumnInfo(name = "encrypted_content")
+    val encryptedContent: ByteArray,       // Signal Protocol ciphertext
+    val timestamp: Long,
+    val status: String,                    // SENDING, SENT, DELIVERED, READ, FAILED
+    @ColumnInfo(name = "media_id")
+    val mediaId: String? = null,           // UUID (added in migration 1->3)
+    @ColumnInfo(name = "media_type")
+    val mediaType: String? = null,         // IMAGE, VIDEO, VOICE (added in migration 1->3)
+    @ColumnInfo(name = "media_metadata_json")
+    val mediaMetadataJson: String? = null  // Serialized MediaAttachment (added in migration 1->3)
+)
+```
 
-### 3. Messages Table (`messages`)
-Stores the actual message history.
+## DAOs
 
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `id` | String (PK) | UUID. |
-| `conversation_id`| String (FK)| Link to `conversations`. |
-| `sender_id` | String | ID of the sender. |
-| `content` | Blob | **Encrypted** content (if locally stored encrypted) or serialized content. |
-| `status` | Enum | `SENDING`, `SENT`, `DELIVERED`, `READ`, `FAILED`. |
-| `timestamp` | Long | UNIX timestamp. |
-| `media_cid` | String | (Optional) IPFS CID for media attachments. |
+### ContactDao
 
-## Key Storage
+| Method | Return | Query |
+|--------|--------|-------|
+| `getAllContacts()` | `Flow<List<ContactEntity>>` | SELECT * ORDER BY display_name ASC |
+| `getContact(id)` | `suspend ContactEntity?` | SELECT * WHERE id = :id |
+| `getContactFlow(id)` | `Flow<ContactEntity?>` | SELECT * WHERE id = :id |
+| `insertContact(contact)` | `suspend Unit` | INSERT OR REPLACE |
+| `updateContact(contact)` | `suspend Unit` | UPDATE |
+| `deleteContact(id)` | `suspend Unit` | DELETE WHERE id = :id |
+| `getContactCount()` | `suspend Int` | SELECT COUNT(*) |
 
-Sensitivity keys are NOT stored in the database.
+### MessageDao
 
-*   **Database Key**: The key used to unlock SQLCipher is generated on first launch and stored in `EncryptedSharedPreferences`.
-*   **Identity Keys**: The user's private Ed25519 identity key is stored in the **Android Keystore System**.
+| Method | Return | Query |
+|--------|--------|-------|
+| `getMessagesForConversation(id)` | `Flow<List<MessageEntity>>` | SELECT * WHERE conversation_id = :id ORDER BY timestamp DESC |
+| `getRecentMessages(id, limit)` | `suspend List<MessageEntity>` | SELECT * WHERE conversation_id = :id ORDER BY timestamp DESC LIMIT :limit |
+| `insertMessage(message)` | `suspend Unit` | INSERT OR REPLACE |
+| `updateMessage(message)` | `suspend Unit` | UPDATE |
+| `updateMessageStatus(id, status)` | `suspend Unit` | UPDATE SET status = :status WHERE id = :id |
+| `deleteMessage(id)` | `suspend Unit` | DELETE WHERE id = :id |
+| `deleteAllMessagesInConversation(id)` | `suspend Unit` | DELETE WHERE conversation_id = :id |
+| `deleteExpiredMessages(id, cutoff)` | `suspend Unit` | DELETE WHERE conversation_id = :id AND timestamp < :cutoff |
+
+### ConversationDao
+
+| Method | Return | Query |
+|--------|--------|-------|
+| `getAllConversations()` | `Flow<List<ConversationEntity>>` | SELECT * ORDER BY is_pinned DESC, last_message_timestamp DESC |
+| `getConversation(id)` | `suspend ConversationEntity?` | SELECT * WHERE id = :id |
+| `getConversationFlow(id)` | `Flow<ConversationEntity?>` | SELECT * WHERE id = :id |
+| `getConversationByContactId(contactId)` | `suspend ConversationEntity?` | SELECT * WHERE contact_id = :contactId |
+| `insertConversation(conversation)` | `suspend Unit` | INSERT OR REPLACE |
+| `markConversationAsRead(id)` | `suspend Unit` | UPDATE SET unread_count = 0 WHERE id = :id |
+| `incrementUnreadCount(id)` | `suspend Unit` | UPDATE SET unread_count = unread_count + 1 WHERE id = :id |
+| `togglePin(id)` | `suspend Unit` | UPDATE SET is_pinned = NOT is_pinned WHERE id = :id |
+| `setMessageExpiryMode(id, mode)` | `suspend Unit` | UPDATE SET message_expiry_mode = :mode WHERE id = :id |
+| `getConversationsWithExpiryMode()` | `suspend List<ConversationEntity>` | SELECT * WHERE message_expiry_mode IS NOT NULL |
+
+## Migrations
+
+### Version 1 -> 3
+
+```sql
+ALTER TABLE messages ADD COLUMN media_id TEXT DEFAULT NULL;
+ALTER TABLE messages ADD COLUMN media_type TEXT DEFAULT NULL;
+ALTER TABLE messages ADD COLUMN media_metadata_json TEXT DEFAULT NULL;
+ALTER TABLE conversations ADD COLUMN message_expiry_mode TEXT DEFAULT NULL;
+```
+
+Added media attachment support and per-conversation message expiry.
+
+### Version 2 -> 3
+
+```sql
+ALTER TABLE conversations ADD COLUMN message_expiry_mode TEXT DEFAULT NULL;
+```
+
+For databases that started at version 2.
+
+### Version 3 -> 4
+
+```sql
+ALTER TABLE contacts ADD COLUMN onion_address TEXT DEFAULT NULL;
+```
+
+Added .onion address field for P2P Tor hidden service addressing.
+
+## Preferences (DataStore)
+
+`AppPreferences` uses Jetpack DataStore for non-sensitive key-value preferences:
+
+| Key | Type | Default | Purpose |
+|-----|------|---------|---------|
+| `user_id` | String? | null | Current user's ID |
+| `display_name` | String? | null | User's display name |
+| `onboarding_complete` | Boolean | false | Whether onboarding finished |
+| `connection_mode` | String | "DIRECT" | Active ConnectionMode |
+| `mesh_enabled` | Boolean | false | Bluetooth mesh toggle |
+| `message_expiry_mode` | String | "NEVER" | Global default expiry |
+| `onion_address` | String? | null | This device's .onion address |
+| `has_seen_guide` | Boolean | false | Whether onboarding guide was viewed |
+
+## Sensitive Storage
+
+EncryptedSharedPreferences (backed by Android Keystore master key) stores:
+
+| Store | Contents |
+|-------|----------|
+| `TokenStorage` | JWT authentication tokens |
+| `IdentityStorage` | Identity metadata (userId, deviceId, public key) |
+| `EmbeddedTorManager` | ED25519-V3 hidden service private key |
+| `MessageSequenceTracker` | Per-sender message sequence numbers |
+
+## Foreign Key Constraints
+
+- `messages.conversation_id` -> `conversations.id` (CASCADE on delete)
+  - Deleting a conversation automatically deletes all its messages
+- `conversations.contact_id` -> `contacts.id` (no explicit FK constraint in Room, managed at application level)

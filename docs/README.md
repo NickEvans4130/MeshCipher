@@ -1,34 +1,91 @@
-# MeshCipher Documentation
+# MeshCipher Technical Documentation
 
-Welcome to the detailed documentation for **MeshCipher**, a privacy-focused encrypted messaging app for Android.
+Comprehensive technical reference for **MeshCipher**, a privacy-focused encrypted messaging application for Android with multi-transport message delivery.
 
 ## Table of Contents
 
-1. [Introduction](#introduction)
-2. [Architecture](architecture.md)
-3. [Tech Stack](tech_stack.md)
-4. [Security & Cryptography](security.md)
-5. [Networking & Transport](networking.md)
-6. [Media Handling & IPFS](media_handling.md)
-7. [Data Storage](data_storage.md)
-8. [User Guide](user_guide.md)
+1. [Architecture](architecture.md) - Clean Architecture layers, data flow, dependency injection
+2. [Tech Stack](tech_stack.md) - Languages, frameworks, libraries, and build configuration
+3. [Cryptography](cryptography.md) - Identity, Signal Protocol, encryption at rest, media encryption
+4. [Transport Layer](networking.md) - Transport manager, fallback logic, all five transport modes
+5. [WiFi Direct](wifi_direct.md) - P2P discovery, socket protocol, chunked file transfer
+6. [P2P Tor](p2p_tor.md) - Embedded Tor, hidden services, SOCKS5 proxying, wire format
+7. [Bluetooth Mesh](bluetooth_mesh.md) - BLE advertising, GATT server, mesh routing, flooding algorithm
+8. [Media Handling](media_handling.md) - AES-256-GCM encryption, MediaMessageEnvelope, cross-transport delivery
+9. [Data Storage](data_storage.md) - Room + SQLCipher schema, entities, DAOs, migrations
+10. [Privacy Features](privacy.md) - Disappearing messages, message sequence tracking, cleanup lifecycle
 
-## Introduction
+## System Overview
 
-MeshCipher is designed to provide secure, off-the-grid communication capabilities using a multi-layered transport system. It prioritizes user privacy, data sovereignty, and resilience against censorship and network outages.
+MeshCipher is an Android messaging application that provides end-to-end encrypted communication over five independent transport layers:
 
-### Key Features
+| Transport | Network | Range | Bandwidth | Anonymity |
+|-----------|---------|-------|-----------|-----------|
+| Direct Relay | Internet (HTTPS) | Global | High | IP visible to relay |
+| Tor Relay | Internet via Tor | Global | Medium | IP hidden |
+| WiFi Direct | WiFi P2P (802.11) | ~100m | High | No network trace |
+| Bluetooth Mesh | BLE + GATT | ~30-100m per hop | Low | No network trace |
+| P2P Tor | Internet via Tor hidden services | Global | Medium | Fully anonymous |
 
-*   **Offline First**: Bluetooth Mesh networking allows communication without any internet infrastructure.
-*   **Privacy Preserving**: End-to-end encryption using the Signal Protocol.
-*   **Anonymity**: Optional TOR routing for internet-based metadata protection.
-*   **Decentralized Media**: IPFS-based encrypted media storage.
-*   **Hardware Security**: Keys are bound to the device's secure hardware (Trusted Execution Environment).
+All transports deliver the same Signal Protocol-encrypted payload. The transport layer is transparent to the encryption layer - messages are encrypted before transport selection and decrypted after delivery regardless of the path taken.
 
-## Getting Started
+## Build Configuration
 
-If you are a developer looking to contribute, please start by reading the [Architecture](architecture.md) and [Tech Stack](tech_stack.md) guides to understand the system's design.
+- **Language**: Kotlin 1.9.24
+- **Min SDK**: 26 (Android 8.0)
+- **Target SDK**: 34 (Android 14)
+- **JVM Target**: 17
+- **AGP**: 8.5.2
+- **KSP**: 1.9.24-1.0.20
+- **Compose BOM**: 2023.10.01
 
-For specific implementation details on the most complex parts of the system, refer to:
-*   [Networking](networking.md) for how the Bluetooth Mesh and TOR integration works.
-*   [Security](security.md) for the cryptographic identity and encryption implementation.
+### Build Commands
+
+```bash
+# Compile
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :app:compileDebugKotlin --no-daemon
+
+# Unit tests
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :app:testDebugUnitTest --no-daemon
+```
+
+## Package Structure
+
+```
+com.meshcipher/
+  data/
+    auth/           # Token storage
+    bluetooth/      # BLE mesh manager, GATT server, routing
+    cleanup/        # Message expiry/cleanup
+    crypto/         # Signal Protocol encryption
+    identity/       # Hardware key management, identity storage
+    local/          # Room database, entities, DAOs, preferences
+    media/          # Media encryption, file management
+    remote/         # Relay server API (Retrofit)
+    security/       # Message sequence tracking
+    settings/       # (unused - preferences in local/)
+    tor/            # Orbot integration, embedded Tor, P2P Tor
+    transport/      # Transport manager and all transport implementations
+    wifidirect/     # WiFi Direct manager, socket manager
+    worker/         # WorkManager tasks (sync, cleanup)
+  di/               # Hilt modules
+  domain/
+    model/          # Domain entities (Message, Contact, Identity, etc.)
+    repository/     # Repository interfaces
+  presentation/
+    chat/           # Chat screen + ViewModel
+    components/     # Reusable tactical UI components
+    contacts/       # Contact management screens
+    conversations/  # Conversation list screen
+    guide/          # Onboarding guide
+    mesh/           # Bluetooth mesh status screen
+    navigation/     # NavHost and Screen routes
+    onboarding/     # Identity creation
+    p2ptor/         # P2P Tor status screen
+    scan/           # QR code scanner (CameraX)
+    settings/       # Settings screen
+    share/          # QR code generation
+    theme/          # Colors, typography, theme
+    util/           # Avatar color utility
+    wifidirect/     # WiFi Direct status screen
+```

@@ -1,350 +1,129 @@
 # MeshCipher
 
-A privacy-focused encrypted messaging app for Android with multi-transport capabilities including Bluetooth mesh networking for offline communication.
+A privacy-focused encrypted messaging app for Android with five independent transport layers including Bluetooth mesh, WiFi Direct, and Tor hidden services for serverless and anonymous communication.
 
 ## Features
 
-- **End-to-End Encryption** - All messages encrypted using Signal Protocol
-- **Bluetooth Mesh Networking** - Send messages without internet via multi-hop relay
-- **Hardware-Bound Identity** - Cryptographic keys stored in Android Keystore
-- **TOR Integration** - Optional metadata privacy through Orbot
-- **Offline Support** - Messages queue and sync when connectivity returns
-- **QR Code Contact Exchange** - Easy secure contact sharing
+- **End-to-End Encryption** - Signal Protocol (X3DH + Double Ratchet) for all messages
+- **Five Transport Modes** - Direct relay, Tor relay, WiFi Direct, Bluetooth mesh, P2P Tor hidden services
+- **Secure Media Sharing** - Images, video, and voice messages encrypted with AES-256-GCM
+- **Hardware-Bound Identity** - Ed25519 keys stored in Android Keystore (TEE/StrongBox)
+- **Offline Messaging** - Bluetooth mesh and WiFi Direct work without any internet
+- **Anonymous Messaging** - P2P Tor mode uses .onion hidden services with no relay server
+- **Disappearing Messages** - Configurable auto-delete (on close, 5min, 1hr, 24hr, 7d, 30d)
+- **QR Code Contact Exchange** - In-person key verification
+- **Encrypted Database** - SQLCipher (AES-256) for all local data
+
+## Transport Modes
+
+| Mode | Network | Range | Speed | Privacy | Server Required |
+|------|---------|-------|-------|---------|-----------------|
+| Direct | HTTPS | Global | Fast | IP visible to relay | Yes |
+| Tor Relay | HTTPS via Tor | Global | Medium | IP hidden from relay | Yes (+ Orbot) |
+| WiFi Direct | WiFi P2P | ~100m | Fast | No network trace | No |
+| Bluetooth Mesh | BLE | ~30-100m/hop | Low | No network trace | No |
+| P2P Tor | Tor hidden services | Global | Medium | Fully anonymous | No (+ embedded Tor) |
+
+All transports deliver the same Signal Protocol-encrypted payload. The encryption layer is independent of the transport layer.
 
 ## Architecture
 
-MeshCipher follows Clean Architecture with four layers:
-
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Presentation                          │
-│         (Jetpack Compose UI, ViewModels)                │
-├─────────────────────────────────────────────────────────┤
-│                      Domain                              │
-│      (Use Cases, Repository Interfaces, Models)         │
-├─────────────────────────────────────────────────────────┤
-│                       Data                               │
-│  (Room + SQLCipher, Signal Protocol, Bluetooth, API)    │
-├─────────────────────────────────────────────────────────┤
-│                        DI                                │
-│              (Hilt Dependency Injection)                │
-└─────────────────────────────────────────────────────────┘
+Presentation    Jetpack Compose + MVVM (ViewModel + StateFlow)
+Domain          Pure Kotlin models, repository interfaces
+Data            Room/SQLCipher, Signal Protocol, BLE, WiFi P2P, Tor, Retrofit
+DI              Hilt
 ```
 
-## Tech Stack
-
-- **Language**: Kotlin
-- **UI**: Jetpack Compose with Material Design 3
-- **Database**: Room with SQLCipher encryption
-- **Encryption**: Signal Protocol (libsignal-android)
-- **DI**: Hilt
-- **Async**: Kotlin Coroutines + Flow
-- **Networking**: Retrofit + OkHttp
-- **Logging**: Timber
-
----
-
-## How It Works
-
-### Identity System
-
-MeshCipher creates a hardware-bound cryptographic identity on first launch:
-
-1. **Key Generation**: Ed25519 keypair generated in Android Keystore (hardware-backed on supported devices)
-2. **User ID**: Derived from Base64-encoded public key, creating a unique identifier
-3. **Biometric Protection**: Signing operations require biometric authentication
-4. **Non-Exportable**: Private keys never leave the secure hardware
-
-```
-┌──────────────────┐
-│  Android Keystore │
-│  ┌──────────────┐ │
-│  │ Private Key  │ │  ← Never exported
-│  │  (Ed25519)   │ │
-│  └──────────────┘ │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│   Public Key     │ → Base64 encode → User ID
-└──────────────────┘
-```
-
-### Message Encryption
-
-All messages are encrypted end-to-end using Signal Protocol:
-
-1. **Session Establishment**: When you add a contact, a Signal session is created using their public key
-2. **Message Encryption**: Each message is encrypted with a unique message key (Double Ratchet)
-3. **Forward Secrecy**: Compromising one key doesn't compromise past or future messages
-4. **Storage**: Messages stored encrypted in SQLCipher database
-
-```
-Sender                                    Recipient
-┌─────────┐                              ┌─────────┐
-│Plaintext│                              │Plaintext│
-└────┬────┘                              └────▲────┘
-     │                                        │
-     ▼                                        │
-┌─────────┐    ┌─────────────────┐      ┌─────────┐
-│ Encrypt │───▶│  Encrypted Msg  │─────▶│ Decrypt │
-│ (Signal)│    │  (via transport)│      │ (Signal)│
-└─────────┘    └─────────────────┘      └─────────┘
-```
-
-### Transport Layer
-
-MeshCipher supports three connection modes:
-
-#### 1. Direct Internet (Default)
-- Messages sent to relay server over HTTPS
-- Server queues messages for offline recipients
-- Fastest delivery, server sees metadata (not content)
-
-#### 2. TOR Relay
-- Messages routed through TOR network via Orbot
-- Server cannot see your IP address
-- 3-5 second latency, enhanced privacy
-
-#### 3. P2P Only (Bluetooth Mesh)
-- No internet required
-- Messages hop between nearby devices
-- Maximum privacy, fully decentralized
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   Transport Manager                      │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
-│  │   Internet  │  │  TOR Relay  │  │ Bluetooth Mesh  │ │
-│  │  Transport  │  │  Transport  │  │   Transport     │ │
-│  └──────┬──────┘  └──────┬──────┘  └───────┬─────────┘ │
-│         │                │                  │           │
-│         ▼                ▼                  ▼           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
-│  │Relay Server │  │ TOR Network │  │  Nearby Peers   │ │
-│  └─────────────┘  └─────────────┘  └─────────────────┘ │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Bluetooth Mesh Networking
-
-The mesh network enables offline messaging through multi-hop relay:
-
-#### Discovery
-1. **Advertising**: Device broadcasts its presence via BLE (Bluetooth Low Energy)
-2. **Scanning**: Device listens for other MeshCipher users
-3. **Peer Tracking**: Discovered peers stored with RSSI (signal strength) and timestamps
-4. **Stale Removal**: Peers not seen for 30 seconds are removed
-
-#### Message Routing
-```
-Device A ──────▶ Device B ──────▶ Device C ──────▶ Device D
-(Sender)        (Relay)          (Relay)         (Recipient)
-   │               │                │                │
-   └── Hop 1 ──────┴─── Hop 2 ─────┴──── Hop 3 ────┘
-```
-
-1. **Send**: Message created with destination user ID and TTL (Time To Live = 5)
-2. **Relay**: Each hop decrements TTL and adds device to path
-3. **Delivery**: When destination device receives message, it's delivered locally
-4. **Loop Prevention**: Path tracking prevents relaying to already-visited devices
-
-#### GATT Protocol
-Messages are transferred using Bluetooth GATT (Generic Attribute Profile):
-
-- **Service UUID**: Custom MeshCipher service
-- **Message Characteristic**: Write-only, receives encrypted messages
-- **ACK Characteristic**: Read/notify for delivery confirmation
-
-```
-┌────────────────────────────────────────────────────────┐
-│                    GATT Server                          │
-│  ┌────────────────────────────────────────────────┐   │
-│  │           MeshCipher Service                    │   │
-│  │  ┌──────────────────┐  ┌──────────────────┐   │   │
-│  │  │ Message Char     │  │ ACK Char         │   │   │
-│  │  │ (Write)          │  │ (Read/Notify)    │   │   │
-│  │  └──────────────────┘  └──────────────────┘   │   │
-│  └────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────┘
-```
-
-#### Mesh Message Format
-```
-┌─────────┬──────────┬─────────┬───────────┬─────────────┬──────────┐
-│ Msg ID  │ Origin   │ Dest    │ Timestamp │ TTL │ Path  │ Payload  │
-│ (UUID)  │ User ID  │ User ID │  (Long)   │(Int)│(List) │ (Bytes)  │
-└─────────┴──────────┴─────────┴───────────┴─────────────┴──────────┘
-```
-
-### Notifications & Unread Tracking
-
-#### Push Notifications
-- High-priority notification channel for incoming messages
-- Shows sender name and message preview
-- Tapping notification opens the conversation
-
-#### Unread Count System
-1. **Increment**: When message received, conversation's unread count increases
-2. **Display**: Badge shown on contact avatar and conversation list
-3. **Reset**: When user opens chat, count resets to zero
-4. **Real-time**: Updates immediately when viewing chat and new messages arrive
-
-### Contact Exchange
-
-Contacts are exchanged via QR codes containing:
-
-```
-meshcipher://add?data=<base64-encoded-contact-card>
-
-Contact Card Contents:
-- User ID (public key based)
-- Public encryption key
-- Device ID
-- Device name
-- Verification code (6 digits)
-```
-
-#### Verification Code
-Generated from both parties' public keys to prevent MITM attacks:
-```
-SHA-256(your_public_key + their_public_key) → first 6 digits
-```
-
-Both users should verify they see the same code.
-
-### Data Storage
-
-#### Database Schema
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    contacts     │     │  conversations  │     │    messages     │
-├─────────────────┤     ├─────────────────┤     ├─────────────────┤
-│ id (PK)         │◄───┐│ id (PK)         │◄───┐│ id (PK)         │
-│ display_name    │    ││ contact_id (FK) │────┘│ conversation_id │───┐
-│ public_key      │    │├─────────────────┤     │ sender_id       │   │
-│ identity_key    │    ││ last_message_id │     │ recipient_id    │   │
-│ signal_address  │    ││ last_timestamp  │     │ encrypted_content│  │
-│ last_seen       │    ││ unread_count    │     │ timestamp       │   │
-│ created_at      │    ││ is_pinned       │     │ status          │   │
-└─────────────────┘    │└─────────────────┘     └─────────────────┘   │
-                       │                                               │
-                       └───────────────────────────────────────────────┘
-```
-
-#### Encryption at Rest
-- SQLCipher encrypts entire database file
-- Encryption key derived from device-specific secrets
-- Database unreadable without proper key
-
----
+See [docs/](docs/) for detailed technical documentation.
 
 ## Building
 
 ### Prerequisites
-- Android Studio Hedgehog or newer
 - JDK 17 or 21
 - Android SDK 34
 
-### Debug Build
-```bash
-./gradlew assembleDebug
-```
+### Commands
 
-### Release Build
 ```bash
-./gradlew assembleRelease
-```
+# Debug build
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew assembleDebug --no-daemon
 
-### Running Tests
-```bash
-./gradlew test
+# Unit tests
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :app:testDebugUnitTest --no-daemon
 ```
-
----
 
 ## Permissions
-
-MeshCipher requires the following permissions:
 
 | Permission | Purpose |
 |------------|---------|
 | `BLUETOOTH_SCAN` | Discover nearby mesh peers |
 | `BLUETOOTH_ADVERTISE` | Broadcast presence to mesh |
 | `BLUETOOTH_CONNECT` | Connect to peers for messaging |
-| `CAMERA` | Scan QR codes for contact exchange |
-| `INTERNET` | Relay server communication |
+| `NEARBY_WIFI_DEVICES` | WiFi Direct peer discovery |
+| `ACCESS_FINE_LOCATION` | Required for WiFi P2P on older APIs |
+| `CAMERA` | QR code scanning for contact exchange |
+| `INTERNET` | Relay server and Tor communication |
 | `POST_NOTIFICATIONS` | Message notifications |
-| `FOREGROUND_SERVICE` | Keep mesh network active |
-| `USE_BIOMETRIC` | Protect cryptographic operations |
-
----
+| `FOREGROUND_SERVICE` | Keep mesh/Tor services active |
 
 ## Project Structure
 
 ```
-app/src/main/java/com/meshcipher/
-├── data/
-│   ├── bluetooth/          # Mesh networking
-│   │   ├── BluetoothMeshManager.kt    # BLE advertising/scanning
-│   │   ├── BluetoothMeshService.kt    # Foreground service
-│   │   ├── GattServerManager.kt       # GATT server for receiving
-│   │   ├── GattClientManager.kt       # GATT client for sending
-│   │   └── routing/
-│   │       └── MeshRouter.kt          # Multi-hop routing logic
-│   ├── identity/           # Cryptographic identity
-│   ├── local/              # Room database & DAOs
-│   ├── remote/             # Relay server API
-│   ├── repository/         # Repository implementations
-│   ├── signal/             # Signal Protocol integration
-│   ├── tor/                # TOR/Orbot integration
-│   └── transport/          # Transport layer abstraction
-├── di/                     # Hilt modules
-├── domain/
-│   ├── model/              # Domain models
-│   ├── repository/         # Repository interfaces
-│   └── usecase/            # Business logic use cases
-└── presentation/
-    ├── chat/               # Chat screen
-    ├── contacts/           # Contact list & details
-    ├── conversations/      # Conversation list
-    ├── mesh/               # Mesh network visualization
-    ├── onboarding/         # First-time setup
-    ├── settings/           # App settings
-    └── theme/              # Material Design theme
+com.meshcipher/
+  data/
+    bluetooth/      BLE mesh (advertising, scanning, GATT, routing)
+    cleanup/        Disappearing messages lifecycle
+    crypto/         Signal Protocol encrypt/decrypt
+    identity/       Hardware key management (Android Keystore)
+    local/          Room + SQLCipher database, DataStore preferences
+    media/          AES-256-GCM media encryption, file storage
+    remote/         Relay server API (Retrofit)
+    security/       Message sequence tracking (replay prevention)
+    tor/            Embedded Tor, hidden services, P2P connections
+    transport/      TransportManager + all transport implementations
+    wifidirect/     WiFi P2P manager, TCP socket protocol
+  domain/
+    model/          Message, Contact, Identity, MeshMessage, P2PMessage, etc.
+    repository/     Repository interfaces
+  presentation/
+    chat/           Chat screen (bubbles, media, voice)
+    components/     Tactical UI components (header, cards, FAB)
+    contacts/       Contact list, detail, add
+    conversations/  Conversation list
+    guide/          Onboarding guide (connection mode walkthrough)
+    mesh/           Bluetooth mesh status
+    navigation/     NavHost, Screen routes
+    onboarding/     Identity creation
+    p2ptor/         P2P Tor status
+    settings/       App settings
+    theme/          Dark tactical theme (Inter + Roboto Mono)
+    wifidirect/     WiFi Direct status
 ```
 
----
+## Documentation
 
-## Security Considerations
+Detailed technical documentation is in [docs/](docs/):
 
-### What MeshCipher Protects
-- Message content (end-to-end encrypted)
-- Contact list (encrypted database)
-- Private keys (hardware-backed storage)
+- [Architecture](docs/architecture.md) - Clean Architecture layers, data flow, DI
+- [Tech Stack](docs/tech_stack.md) - All dependencies with versions
+- [Cryptography](docs/cryptography.md) - Signal Protocol, AES-256-GCM, hardware identity
+- [Transport Layer](docs/networking.md) - TransportManager fallback logic
+- [WiFi Direct](docs/wifi_direct.md) - Discovery, socket protocol, chunked file transfer
+- [P2P Tor](docs/p2p_tor.md) - Hidden services, SOCKS5, wire format
+- [Bluetooth Mesh](docs/bluetooth_mesh.md) - BLE, GATT, mesh routing, flooding
+- [Media Handling](docs/media_handling.md) - Encryption, MediaMessageEnvelope
+- [Data Storage](docs/data_storage.md) - Schema, entities, DAOs, migrations
+- [Privacy Features](docs/privacy.md) - Disappearing messages, sequence tracking
 
-### What MeshCipher Does NOT Protect (without TOR)
-- Metadata (who talks to whom, when)
-- IP addresses visible to relay server
-- Message timing patterns
+## Security
 
-### Recommendations
-- Use P2P mode for maximum privacy
-- Enable TOR for internet messaging when metadata privacy matters
-- Verify contact fingerprints in person when possible
-- Keep your device secure (screen lock, updated OS)
-
----
-
-## License
-
-[Add your license here]
-
----
+See [SECURITY.md](SECURITY.md) for our vulnerability disclosure policy.
 
 ## Contributing
 
-[Add contribution guidelines here]
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

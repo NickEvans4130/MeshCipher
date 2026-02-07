@@ -1,53 +1,182 @@
-# Security & Cryptography
-
-This document outlines the security architecture of MeshCipher, detailing how we protect user data, identity, and communication.
+# Cryptography
 
 ## 1. Hardware-Bound Identity
 
-MeshCipher eschews traditional phone number-based identities in favor of cryptographic identities tied to the user's device hardware.
+MeshCipher uses cryptographic identities tied to device hardware instead of phone numbers or email addresses.
 
 ### Key Generation
-*   **Algorithm**: Ed25519 (Edwards-curve Digital Signature Algorithm).
-*   **Storage**: Private keys are generated inside the **Android Keystore** (TEE/StrongBox) and marked as non-exportable. They can never leave the physical device.
-*   **User ID**: The User ID is derived from the SHA-256 hash of the public key, Base64 encoded.
+
+- **Algorithm**: Ed25519 (Edwards-curve Digital Signature Algorithm)
+- **Storage**: Private keys generated inside the Android Keystore (TEE/StrongBox where available). Keys are marked non-exportable and never leave the secure hardware.
+- **User ID Derivation**:
+  ```
+  publicKey = Ed25519.generateKeyPair().public
+  hash = SHA-256(publicKey.encoded)
+  userId = Base64Encode(hash).substring(0, 32)
+  ```
+
+### Identity Storage (`IdentityStorage`)
+
+- Identity metadata (userId, deviceId, deviceName, createdAt) persisted in EncryptedSharedPreferences
+- Hardware public key stored alongside metadata
+- `KeyManager` handles Android Keystore operations (generate, sign, delete)
 
 ### Authentication
-*   **Biometrics**: Operations using the private key (like signing a login challenge) require biometric authentication (Fingerprint/Face Unlock).
-*   **Challenge-Response**: Authentication with the relay server uses a challenge-response mechanism signed by the hardware key.
+
+- **Challenge-Response**: Server sends random challenge, device signs with hardware key, server verifies with stored public key
+- **Token Storage**: JWT tokens stored in EncryptedSharedPreferences (`TokenStorage`)
 
 ## 2. End-to-End Encryption (Signal Protocol)
 
-All communications (Direct or Group) are encrypted using the Signal Protocol.
+All message content is encrypted using the Signal Protocol via `libsignal-client`.
 
-*   **X3DH (Extended Triple Diffie-Hellman)**: Used for the initial key agreement between users. Allows for asynchronous setup (users don't need to be online at the same time).
-*   **Double Ratchet Algorithm**: Used for message encryption. It provides:
-    *   **Perfect Forward Secrecy (PFS)**: Compromise of current keys does not reveal past messages.
-    *   **Post-Compromise Security**: Compromise of current keys does not allow decryption of future messages (once the ratchet advances).
+### Session Establishment
+
+```
+SignalProtocolManager.createSession(contact, preKeyBundle)
+  -> SessionBuilder(signalProtocolStore, contact.signalProtocolAddress)
+  -> sessionBuilder.process(preKeyBundle)
+```
+
+**PreKeyBundle** contains:
+- Identity key (Curve25519 public key)
+- Registration ID
+- Signed pre-key (ID + public key + signature)
+- One-time pre-key (ID + public key)
+
+**X3DH (Extended Triple Diffie-Hellman)** performs the initial key agreement. Users do not need to be online simultaneously - pre-keys allow asynchronous session setup.
+
+### Message Encryption
+
+```
+SignalProtocolManager.encryptMessage(plaintext, recipientAddress)
+  -> SessionCipher(signalProtocolStore, recipientAddress)
+  -> sessionCipher.encrypt(plaintext.toByteArray())
+  -> Returns CiphertextMessage
+```
+
+**First message**: `PreKeySignalMessage` (type `PREKEY_TYPE`) - establishes session
+**Subsequent messages**: `SignalMessage` (type `WHISPER_TYPE`) - uses established Double Ratchet session
+
+### Message Decryption
+
+```
+SignalProtocolManager.decryptMessage(ciphertext, senderAddress)
+  -> SessionCipher(signalProtocolStore, senderAddress)
+  -> sessionCipher.decrypt(ciphertext)  // dispatches by type
+  -> Returns plaintext String
+```
+
+### Double Ratchet Properties
+
+- **Perfect Forward Secrecy (PFS)**: Each message uses a new symmetric key derived from the ratchet. Compromise of current keys cannot decrypt past messages.
+- **Post-Compromise Security**: After a key compromise, the ratchet advances with new DH exchanges, re-establishing security.
+- **Deniable Authentication**: The protocol does not produce cryptographic proof that a specific user sent a message.
+
+### Signal Protocol Address Format
+
+```
+signalProtocolAddress = "userId@deviceId"
+```
+
+Stored in `ContactEntity.signalProtocolAddress`. Used as the addressing scheme for all Signal Protocol operations.
+
+### Safety Number Verification
+
+```
+SignalProtocolManager.getSafetyNumber(localIdentityKey, remoteIdentityKey)
+  -> SHA-256(localKey + remoteKey)
+  -> Returns 12-digit numeric string
+```
+
+Displayed in Contact Detail screen for manual out-of-band verification.
 
 ## 3. Data at Rest Encryption
 
-Local data is protected against physical device seizure or malware.
+### Database (SQLCipher)
 
-### Database Encryption
-*   **SQLCipher**: The Room database is encrypted with 256-bit AES.
-*   **Key Management**: The database encryption key is derived from a secret stored in `EncryptedSharedPreferences`.
+- **Algorithm**: AES-256 in CBC mode with HMAC-SHA256 page authentication
+- **Key Derivation**: Database encryption key generated on first launch
+- **Key Storage**: Key stored in EncryptedSharedPreferences (backed by Android Keystore master key)
+- **Implementation**: Room database wraps SQLCipher via `SupportFactory`
+- **Result**: All messages, contacts, and conversations encrypted on disk. Database file is opaque binary without the key.
 
-### Media Encryption
-*   **Chunked Encryption**: Large media files are split into 64KB chunks.
-*   **Per-Chunk Keys**: Each chunk is encrypted with a unique random AES-256 key.
-*   **Key Distribution**: The keys for the chunks are encrypted using the Signal Protocol and sent to the recipient in the metadata message.
-*   **Storage**: Encrypted chunks are stored on IPFS. Even if the IPFS node is public, the data is unreadable without the keys found in the E2E encrypted message.
+### Media Files
 
-## 4. Social Recovery (Shamir's Secret Sharing)
+Media files at rest on the filesystem are stored in their decrypted form under `context.filesDir/media/{type}/{mediaId}`. The encrypted form exists only during transport. This is a deliberate trade-off: once decrypted, media is available for the UI without re-decryption overhead. When disappearing messages trigger cleanup, the cleanup manager deletes both the database record and the media file.
 
-To prevent permanent account loss due to device loss (since keys are hardware-bound), MeshCipher implements Social Recovery.
+## 4. Media Encryption (Transport)
 
-*   **Mechanism**: The master recovery seed is split into 5 "shards".
-*   **Threshold**: A threshold of 3 shards is required to reconstruct the seed.
-*   **Guardians**: The shards are encrypted and distributed to 5 trusted contacts ("Guardians").
-*   **Recovery**: Authorization from 3 guardians allows the user to provision a new device identity linked to their account.
+Media is encrypted per-message before transport using AES-256-GCM.
 
-## 5. Network Privacy (Metadata Protection)
+### Encryption (`MediaEncryptor.encrypt`)
 
-*   **TOR Integration**: Network traffic can be routed through the TOR network via Orbot integration. This hides the user's IP address from the relay server, protecting metadata (who is talking to whom).
-*   **Bluetooth Mesh**: Completely bypasses the internet, leaving no metadata trail on any ISP or server logs.
+```
+keyGen = KeyGenerator.getInstance("AES")
+keyGen.init(256)
+secretKey = keyGen.generateKey()
+
+cipher = Cipher.getInstance("AES/GCM/NoPadding")
+cipher.init(ENCRYPT_MODE, secretKey)
+iv = cipher.iv   // random 12-byte IV from cipher
+encryptedBytes = cipher.doFinal(plainBytes)
+
+return EncryptedMedia(
+    encryptedBytes,
+    Base64(secretKey.encoded),  // 256-bit key
+    Base64(iv)                  // 96-bit IV
+)
+```
+
+### Decryption (`MediaEncryptor.decrypt`)
+
+```
+keyBytes = Base64.decode(encryptionKey)
+ivBytes = Base64.decode(encryptionIv)
+
+secretKey = SecretKeySpec(keyBytes, "AES")
+gcmSpec = GCMParameterSpec(128, ivBytes)  // 128-bit auth tag
+
+cipher = Cipher.getInstance("AES/GCM/NoPadding")
+cipher.init(DECRYPT_MODE, secretKey, gcmSpec)
+return cipher.doFinal(encryptedBytes)
+```
+
+### Key Distribution
+
+The AES key and IV are included in the `MediaMessageEnvelope` JSON, which is itself encrypted by the Signal Protocol before transport. The media encryption key never travels in the clear.
+
+## 5. Message Sequence Tracking
+
+`MessageSequenceTracker` prevents replay attacks by tracking per-sender message sequence numbers.
+
+- Backed by SharedPreferences (`message_sequences`)
+- Each sender has a counter: `{senderId} -> lastSequenceNumber`
+- Messages with sequence numbers <= last seen are rejected
+- Prevents re-delivery of previously processed messages
+
+## 6. Network Privacy (Metadata Protection)
+
+### Direct Mode
+- Content: encrypted (Signal Protocol)
+- Metadata: IP address visible to relay server, timing correlation possible
+- Server sees: sender ID, recipient ID, message size, timestamp
+
+### Tor Relay Mode
+- Content: encrypted (Signal Protocol)
+- Metadata: IP hidden from relay server (exit node IP visible instead)
+- Traffic passes through 3 Tor hops before reaching relay
+- OkHttp client configured with SOCKS5 proxy at `127.0.0.1:9050`
+
+### P2P Tor Mode
+- Content: encrypted (Signal Protocol)
+- Metadata: both endpoints hidden behind .onion addresses
+- No relay server involved at all
+- Tor provides 6 hops (3 per side of the rendezvous circuit)
+
+### WiFi Direct / Bluetooth Mesh
+- Content: encrypted (Signal Protocol)
+- Metadata: no network trace (no ISP, no server logs)
+- Communication is device-to-device only
+- WiFi Direct: MAC addresses visible to paired device
+- Bluetooth Mesh: BLE advertisements contain hashed device/user IDs

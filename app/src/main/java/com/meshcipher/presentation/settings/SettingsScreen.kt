@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -53,6 +54,7 @@ fun SettingsScreen(
     onScanContactClick: () -> Unit = {},
     onWifiDirectClick: () -> Unit = {},
     onP2PTorClick: () -> Unit = {},
+    onGuideClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -701,6 +703,60 @@ fun SettingsScreen(
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Help Section
+            Text(
+                text = "Help",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onGuideClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = SecureGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "How It Works",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Learn about connection modes and features",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = TextSecondary
                     )
                 }
             }
