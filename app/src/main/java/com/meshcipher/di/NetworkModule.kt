@@ -3,6 +3,7 @@ package com.meshcipher.di
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.meshcipher.BuildConfig
+import com.meshcipher.data.auth.AuthInterceptor
 import com.meshcipher.data.remote.api.AuthApiService
 import com.meshcipher.data.remote.api.RelayApiService
 import dagger.Module
@@ -20,7 +21,6 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    // TODO: Update this to your ThinkPad's IP address
     private const val BASE_URL = "http://192.168.1.212:5000/"
 
     @Provides
@@ -31,11 +31,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor(authInterceptor)
 
         if (BuildConfig.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {

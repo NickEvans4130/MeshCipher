@@ -57,6 +57,8 @@ data class AcknowledgeResponse(
 data class RegisterDeviceRequest(
     @SerializedName("device_id")
     val deviceId: String,
+    @SerializedName("user_id")
+    val userId: String = "",
     @SerializedName("public_key")
     val publicKey: String? = null
 )

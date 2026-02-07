@@ -22,8 +22,31 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
+# Generate secrets if not already set
+echo "[4/6] Generating secrets..."
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+ADMIN_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+
+ENV_FILE="${INSTALL_DIR}/.env"
+if [ ! -f "$ENV_FILE" ]; then
+    cat > "$ENV_FILE" << ENVEOF
+SECRET_KEY=${SECRET_KEY}
+ADMIN_KEY=${ADMIN_KEY}
+DB_USER=meshcipher
+DB_PASS=meshcipher_password
+DB_HOST=localhost
+DB_NAME=meshcipher
+MESSAGE_RETENTION_HOURS=72
+MAX_QUEUED_PER_RECIPIENT=500
+ENVEOF
+    chmod 600 "$ENV_FILE"
+    echo "  Created .env with generated secrets"
+else
+    echo "  .env already exists, skipping"
+fi
+
 # Create systemd service
-echo "[4/5] Creating systemd service..."
+echo "[5/6] Creating systemd service..."
 INSTALL_DIR=$(pwd)
 USER=$(whoami)
 
@@ -36,8 +59,9 @@ After=network.target postgresql.service
 Type=simple
 User=${USER}
 WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=${INSTALL_DIR}/.env
 Environment=PATH=${INSTALL_DIR}/venv/bin:/usr/bin
-ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/server.py
+ExecStart=${INSTALL_DIR}/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 server:app
 Restart=always
 RestartSec=5
 
@@ -46,7 +70,7 @@ WantedBy=multi-user.target
 EOF
 
 # Enable and start service
-echo "[5/5] Starting service..."
+echo "[6/6] Starting service..."
 sudo systemctl daemon-reload
 sudo systemctl enable meshcipher-relay
 sudo systemctl start meshcipher-relay
