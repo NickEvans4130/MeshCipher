@@ -21,7 +21,7 @@ import javax.inject.Singleton
 object NetworkModule {
 
     // TODO: Update this to your ThinkPad's IP address
-    private const val BASE_URL = "http://192.168.1.100:5000/"
+    private const val BASE_URL = "http://192.168.1.212:5000/"
 
     @Provides
     @Singleton
