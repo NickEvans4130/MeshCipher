@@ -175,9 +175,13 @@ def health_check():
         db_status = "connected"
     except Exception:
         db_status = "error"
+        return jsonify({"status": "degraded", "database": db_status}), 503
 
-    msg_count = QueuedMessage.query.filter_by(delivered=False).count()
-    device_count = RegisteredDevice.query.count()
+    try:
+        msg_count = QueuedMessage.query.filter_by(delivered=False).count()
+        device_count = RegisteredDevice.query.count()
+    except Exception:
+        return jsonify({"status": "degraded", "database": db_status}), 503
 
     return jsonify(
         {
@@ -526,4 +530,4 @@ def set_security_headers(response):
 if __name__ == "__main__":
     # Development only. In production, use gunicorn:
     # gunicorn -w 4 -b 0.0.0.0:5000 server:app
-    app.run(host="0.0.0.0", port=5000, debug=os.environ.get("FLASK_DEBUG", "0") == "1")
+    app.run(host="0.0.0.0", port=5000)
