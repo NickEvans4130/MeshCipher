@@ -30,7 +30,9 @@ class ConversationRepositoryImpl @Inject constructor(
                         id = conv.id,
                         contactId = conv.contactId,
                         contactName = contact.displayName,
-                        lastMessage = conv.lastMessageId?.let { "Last message" }, // TODO: Fetch actual message
+                        lastMessage = conv.lastMessageId?.let { msgId ->
+                            fetchLastMessagePreview(msgId)
+                        },
                         lastMessageTime = conv.lastMessageTimestamp,
                         unreadCount = conv.unreadCount,
                         isPinned = conv.isPinned
@@ -48,11 +50,24 @@ class ConversationRepositoryImpl @Inject constructor(
             id = entity.id,
             contactId = entity.contactId,
             contactName = contact.displayName,
-            lastMessage = null, // TODO: Fetch
+            lastMessage = entity.lastMessageId?.let { fetchLastMessagePreview(it) },
             lastMessageTime = entity.lastMessageTimestamp,
             unreadCount = entity.unreadCount,
             isPinned = entity.isPinned
         )
+    }
+
+    private suspend fun fetchLastMessagePreview(messageId: String): String? {
+        val msg = messageDao.getMessageById(messageId) ?: return null
+        if (msg.mediaType != null) {
+            return when (msg.mediaType) {
+                "IMAGE" -> "Photo"
+                "VIDEO" -> "Video"
+                "VOICE" -> "Voice message"
+                else -> "Attachment"
+            }
+        }
+        return String(msg.encryptedContent).take(100)
     }
 
     override fun getConversationFlow(conversationId: String): Flow<Conversation?> {
@@ -65,7 +80,9 @@ class ConversationRepositoryImpl @Inject constructor(
                             id = entity.id,
                             contactId = entity.contactId,
                             contactName = contact.displayName,
-                            lastMessage = null,
+                            lastMessage = entity.lastMessageId?.let { msgId ->
+                                fetchLastMessagePreview(msgId)
+                            },
                             lastMessageTime = entity.lastMessageTimestamp,
                             unreadCount = entity.unreadCount,
                             isPinned = entity.isPinned

@@ -1,5 +1,6 @@
 package com.meshcipher.presentation.contacts
 
+import android.util.Base64
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,6 +29,8 @@ class AddContactViewModel @Inject constructor(
     val isFromQRScan: Boolean = savedStateHandle.get<String>("userId") != null
 
     val scannedOnionAddress: String? = savedStateHandle.get<String>("onionAddress")
+    private val scannedPublicKey: String? = savedStateHandle.get<String>("publicKey")
+    private val scannedDeviceId: String? = savedStateHandle.get<String>("deviceId")
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
@@ -47,12 +50,17 @@ class AddContactViewModel @Inject constructor(
             _isLoading.value = true
 
             try {
-                // TODO: Exchange keys properly
+                val publicKey = if (scannedPublicKey != null) {
+                    Base64.decode(scannedPublicKey, Base64.NO_WRAP or Base64.URL_SAFE)
+                } else {
+                    ByteArray(32) { 0 }
+                }
+
                 val contact = Contact(
-                    id = UUID.randomUUID().toString(),
+                    id = _identifier.value,
                     displayName = _name.value,
-                    publicKey = ByteArray(32) { 0 },
-                    identityKey = ByteArray(32) { 0 },
+                    publicKey = publicKey,
+                    identityKey = publicKey,
                     signalProtocolAddress = SignalProtocolAddress(
                         _identifier.value,
                         1

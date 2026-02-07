@@ -7,11 +7,18 @@ sealed class Screen(val route: String) {
         fun createRoute(conversationId: String) = "chat/$conversationId"
     }
     object Contacts : Screen("contacts")
-    object AddContact : Screen("add_contact?userId={userId}&onionAddress={onionAddress}") {
-        fun createRoute(userId: String? = null, onionAddress: String? = null): String {
+    object AddContact : Screen("add_contact?userId={userId}&onionAddress={onionAddress}&publicKey={publicKey}&deviceId={deviceId}") {
+        fun createRoute(
+            userId: String? = null,
+            onionAddress: String? = null,
+            publicKey: String? = null,
+            deviceId: String? = null
+        ): String {
             val params = mutableListOf<String>()
             if (userId != null) params.add("userId=$userId")
             if (onionAddress != null) params.add("onionAddress=$onionAddress")
+            if (publicKey != null) params.add("publicKey=$publicKey")
+            if (deviceId != null) params.add("deviceId=$deviceId")
             return if (params.isEmpty()) "add_contact" else "add_contact?${params.joinToString("&")}"
         }
     }

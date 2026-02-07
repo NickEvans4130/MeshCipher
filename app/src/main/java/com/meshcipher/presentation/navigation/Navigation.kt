@@ -101,6 +101,16 @@ fun MeshCipherNavigation(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("publicKey") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("deviceId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) {
@@ -151,11 +161,14 @@ fun MeshCipherNavigation(
         composable(Screen.ScanContact.route) {
             ScanContactScreen(
                 onContactScanned = { contactCard ->
-                    // Navigate to AddContact with pre-filled userId and onionAddress
                     navController.navigate(
                         Screen.AddContact.createRoute(
                             userId = contactCard.userId,
-                            onionAddress = contactCard.onionAddress
+                            onionAddress = contactCard.onionAddress,
+                            publicKey = android.util.Base64.encodeToString(
+                                contactCard.publicKey, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+                            ),
+                            deviceId = contactCard.deviceId
                         )
                     ) {
                         popUpTo(Screen.ScanContact.route) { inclusive = true }

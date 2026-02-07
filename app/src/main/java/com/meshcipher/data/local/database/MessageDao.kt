@@ -10,6 +10,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversation_id = :conversationId ORDER BY timestamp DESC")
     fun getMessagesForConversation(conversationId: String): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages WHERE id = :messageId")
+    suspend fun getMessageById(messageId: String): MessageEntity?
+
     @Query("SELECT * FROM messages WHERE conversation_id = :conversationId ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentMessages(conversationId: String, limit: Int): List<MessageEntity>
 
