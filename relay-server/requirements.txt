@@ -4,4 +4,4 @@ flask-limiter==3.5.0
 cryptography==46.0.4
 psycopg2-binary==2.9.9
 gunicorn==22.0.0
-PyJWT==2.8.0
+PyJWT==2.11.0
