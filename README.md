@@ -1,6 +1,4 @@
 # MeshCipher
-![Build Status](https://github.com/NickEvans4130/MeshCipher/actions/workflows/ci.yml/badge.svg)
-![Security Scan](https://github.com/NickEvans4130/MeshCipher/actions/workflows/security.yml/badge.svg)
 ![License](https://img.shields.io/github/license/NickEvans4130/MeshCipher)
 
 A privacy-focused encrypted messaging app for Android with five independent transport layers including Bluetooth mesh, WiFi Direct, and Tor hidden services for serverless and anonymous communication.
