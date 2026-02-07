@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.meshcipher.data.local.database.ContactDao
 import com.meshcipher.data.local.database.ConversationDao
+import com.meshcipher.data.local.database.DatabaseKeyProvider
 import com.meshcipher.data.local.database.MeshCipherDatabase
 import com.meshcipher.data.local.database.MessageDao
 import dagger.Module
@@ -11,7 +12,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 import javax.inject.Singleton
 
@@ -22,10 +22,10 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        databaseKeyProvider: DatabaseKeyProvider
     ): MeshCipherDatabase {
-        // TODO: Use proper key derivation in production
-        val passphrase = SQLiteDatabase.getBytes("meshcipher_secret_key".toCharArray())
+        val passphrase = databaseKeyProvider.getOrCreateKey()
         val factory = SupportFactory(passphrase)
 
         return Room.databaseBuilder(

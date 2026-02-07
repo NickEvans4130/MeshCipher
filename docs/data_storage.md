@@ -19,7 +19,7 @@ data class ContactEntity(
     @ColumnInfo(name = "display_name")
     val displayName: String,
     @ColumnInfo(name = "public_key")
-    val publicKey: ByteArray,             // Ed25519 public key
+    val publicKey: ByteArray,             // ECDSA P-256 public key
     @ColumnInfo(name = "identity_key")
     val identityKey: ByteArray,           // Signal Protocol identity key (Curve25519)
     @ColumnInfo(name = "signal_protocol_address")
@@ -185,8 +185,9 @@ EncryptedSharedPreferences (backed by Android Keystore master key) stores:
 
 | Store | Contents |
 |-------|----------|
-| `TokenStorage` | JWT authentication tokens |
+| `TokenStorage` (`auth_prefs`) | JWT authentication tokens |
 | `IdentityStorage` | Identity metadata (userId, deviceId, public key) |
+| `DatabaseKeyProvider` (`db_key_prefs`) | SQLCipher 32-byte encryption key (base64) |
 | `EmbeddedTorManager` | ED25519-V3 hidden service private key |
 | `MessageSequenceTracker` | Per-sender message sequence numbers |
 

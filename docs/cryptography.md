@@ -6,13 +6,15 @@ MeshCipher uses cryptographic identities tied to device hardware instead of phon
 
 ### Key Generation
 
-- **Algorithm**: Ed25519 (Edwards-curve Digital Signature Algorithm)
+- **Algorithm**: ECDSA on secp256r1 (P-256) with SHA-256
 - **Storage**: Private keys generated inside the Android Keystore (TEE/StrongBox where available). Keys are marked non-exportable and never leave the secure hardware.
+- **Signing**: `SHA256withECDSA` via `java.security.Signature`
+- **User Authentication**: Biometric authentication required (30-second validity window), invalidated on new biometric enrollment
 - **User ID Derivation**:
   ```
-  publicKey = Ed25519.generateKeyPair().public
+  publicKey = EC_P256.generateKeyPair().public
   hash = SHA-256(publicKey.encoded)
-  userId = Base64Encode(hash).substring(0, 32)
+  userId = Base64UrlEncode(hash).substring(0, 32)
   ```
 
 ### Identity Storage (`IdentityStorage`)
@@ -23,8 +25,18 @@ MeshCipher uses cryptographic identities tied to device hardware instead of phon
 
 ### Authentication
 
-- **Challenge-Response**: Server sends random challenge, device signs with hardware key, server verifies with stored public key
+Challenge-response protocol with cryptographic signature verification:
+
+1. Client sends `userId` and base64-encoded public key to `/api/v1/auth/challenge`
+2. Server generates 32-byte random challenge, stores it with the public key, returns base64-encoded challenge
+3. Client signs challenge bytes with hardware-backed ECDSA key (`SHA256withECDSA`)
+4. Client sends `userId` and base64-encoded signature to `/api/v1/auth/verify`
+5. Server deserializes the DER-encoded EC public key, verifies the ECDSA signature against the stored challenge using `cryptography.hazmat.primitives.asymmetric.ec.ECDSA(SHA256)`
+6. On success, server issues a JWT (HS256, 30-day expiry) containing `user_id`, `iat`, `exp`
+
 - **Token Storage**: JWT tokens stored in EncryptedSharedPreferences (`TokenStorage`)
+- **Token Injection**: `AuthInterceptor` (OkHttp interceptor) attaches `Authorization: Bearer <token>` to all relay API requests, skipping public endpoints (`/auth/`, `/health`, `/register`)
+- **Challenge Expiry**: Challenges expire after 5 minutes; expired entries are housekept on each new challenge request
 
 ## 2. End-to-End Encryption (Signal Protocol)
 
@@ -96,10 +108,10 @@ Displayed in Contact Detail screen for manual out-of-band verification.
 ### Database (SQLCipher)
 
 - **Algorithm**: AES-256 in CBC mode with HMAC-SHA256 page authentication
-- **Key Derivation**: Database encryption key generated on first launch
-- **Key Storage**: Key stored in EncryptedSharedPreferences (backed by Android Keystore master key)
-- **Implementation**: Room database wraps SQLCipher via `SupportFactory`
-- **Result**: All messages, contacts, and conversations encrypted on disk. Database file is opaque binary without the key.
+- **Key Derivation**: `DatabaseKeyProvider` generates a random 32-byte key via `SecureRandom` on first launch
+- **Key Storage**: Key stored base64-encoded in EncryptedSharedPreferences (`db_key_prefs`), backed by Android Keystore AES-256-GCM master key
+- **Implementation**: Room database wraps SQLCipher via `SupportFactory(passphrase)`
+- **Result**: All messages, contacts, and conversations encrypted on disk. Database file is opaque binary without the key. The encryption key is hardware-bound through the Android Keystore chain.
 
 ### Media Files
 

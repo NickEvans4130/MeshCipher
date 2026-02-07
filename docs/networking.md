@@ -70,23 +70,42 @@ The method tries each transport in priority order. On failure, it falls through 
 
 REST API client using Retrofit + OkHttp.
 
+**Authentication:**
+
+All relay endpoints require a valid JWT token. The `AuthInterceptor` (OkHttp interceptor) reads the token from `TokenStorage` and attaches `Authorization: Bearer <token>` to outgoing requests. Public endpoints (`/auth/*`, `/health`, `/register`) are excluded from token injection. See [Cryptography - Authentication](cryptography.md#authentication) for the challenge-response flow.
+
 **Endpoints:**
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/v1/relay/message` | Send encrypted message |
-| GET | `/api/v1/relay/messages/{recipientId}` | Poll for queued messages |
-| POST | `/api/v1/relay/messages/{recipientId}/ack` | Acknowledge received messages |
-| POST | `/api/v1/register` | Register device with relay |
-| GET | `/api/v1/health` | Server health check |
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/auth/challenge` | No | Request authentication challenge |
+| POST | `/api/v1/auth/verify` | No | Submit signed challenge for JWT |
+| POST | `/api/v1/register` | No | Register device with relay |
+| GET | `/api/v1/health` | No | Server health check |
+| POST | `/api/v1/relay/message` | JWT | Send encrypted message |
+| GET | `/api/v1/relay/messages/{recipientId}` | JWT | Poll for queued messages |
+| POST | `/api/v1/relay/messages/{recipientId}/ack` | JWT | Acknowledge received messages |
+
+**Server-Side Security:**
+
+| Protection | Detail |
+|------------|--------|
+| Rate limiting | Flask-Limiter: 200/min default, 10/min auth, 60/min relay, 30/min health |
+| Identity verification | `sender_id` must match JWT `user_id`; recipients can only fetch/ack own messages |
+| Input sanitization | All string inputs trimmed and truncated to 255 chars |
+| Request size limit | 10 MB max body (`MAX_CONTENT_LENGTH`) |
+| Mailbox bombing | Max 500 queued messages per recipient |
+| Response pagination | Max 100 messages per poll request |
+| Security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `CSP: default-src 'none'`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer` |
+| Signature verification | ECDSA P-256/SHA-256 via Python `cryptography` library |
 
 **Send payload:**
 ```json
 {
-    "senderId": "abc123...",
-    "recipientId": "def456...",
-    "encryptedContent": "Base64(Signal-encrypted bytes)",
-    "contentType": 0
+    "sender_id": "abc123...",
+    "recipient_id": "def456...",
+    "encrypted_content": "Base64(Signal-encrypted bytes)",
+    "content_type": 0
 }
 ```
 

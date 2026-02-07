@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import jwt as pyjwt
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+from cryptography.hazmat.primitives import hashes, serialization
 from flask import Flask, jsonify, request, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
@@ -274,19 +276,27 @@ def verify_challenge():
         del challenges[user_id]
         return jsonify({"error": "Challenge expired"}), 401
 
-    # Signature verification: the client signs the challenge with their
-    # hardware-backed Ed25519 key. Full ECDSA verification requires the
-    # cryptography library. For now we verify the signature is present
-    # and non-empty, and that the user completed the challenge flow.
-    # TODO: Add Ed25519 signature verification with `cryptography` library
+    # Verify ECDSA (P-256/SHA-256) signature against the public key
+    # sent during the challenge request. The client signs with
+    # SHA256withECDSA on secp256r1 via Android Keystore.
     try:
         signature = base64.b64decode(signature_b64)
-        if len(signature) < 32:
+        public_key_b64 = stored.get("public_key", "")
+        if not public_key_b64:
             del challenges[user_id]
-            return jsonify({"error": "Invalid signature"}), 401
+            return jsonify({"error": "No public key on file"}), 401
+
+        public_key_der = base64.b64decode(public_key_b64)
+        public_key = serialization.load_der_public_key(public_key_der)
+
+        public_key.verify(
+            signature,
+            stored["challenge"],
+            ec.ECDSA(hashes.SHA256()),
+        )
     except Exception:
         del challenges[user_id]
-        return jsonify({"error": "Malformed signature"}), 401
+        return jsonify({"error": "Invalid signature"}), 401
 
     token = pyjwt.encode(
         {
