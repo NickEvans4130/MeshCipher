@@ -8,6 +8,7 @@ import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.BluetoothMeshService
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
+import com.meshcipher.data.local.preferences.AppPreferences.Companion.DEFAULT_RELAY_URL
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.MessageExpiryMode
@@ -66,6 +67,13 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = MessageExpiryMode.NEVER
+        )
+
+    val relayServerUrl: StateFlow<String> = appPreferences.relayServerUrl
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DEFAULT_RELAY_URL
         )
 
     private val _hasBluetoothPermissions = MutableStateFlow(false)
@@ -128,6 +136,18 @@ class SettingsViewModel @Inject constructor(
     fun setMessageExpiryMode(mode: MessageExpiryMode) {
         viewModelScope.launch {
             appPreferences.setMessageExpiryMode(mode.name)
+        }
+    }
+
+    fun setRelayServerUrl(url: String) {
+        viewModelScope.launch {
+            appPreferences.setRelayServerUrl(url)
+        }
+    }
+
+    fun resetRelayServerUrl() {
+        viewModelScope.launch {
+            appPreferences.setRelayServerUrl(DEFAULT_RELAY_URL)
         }
     }
 }

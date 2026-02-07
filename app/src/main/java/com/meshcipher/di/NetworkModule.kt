@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.meshcipher.BuildConfig
 import com.meshcipher.data.auth.AuthInterceptor
+import com.meshcipher.data.auth.DynamicBaseUrlInterceptor
 import com.meshcipher.data.remote.api.AuthApiService
 import com.meshcipher.data.remote.api.RelayApiService
 import dagger.Module
@@ -21,7 +22,8 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private const val BASE_URL = "http://192.168.1.212:5000/"
+    // Placeholder base URL; the real URL is injected at request time by DynamicBaseUrlInterceptor
+    private const val BASE_URL = "http://localhost/"
 
     @Provides
     @Singleton
@@ -31,11 +33,15 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
+    ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(authInterceptor)
 
         if (BuildConfig.DEBUG) {

@@ -1,6 +1,7 @@
 package com.meshcipher.data.transport
 
 import com.google.gson.Gson
+import com.meshcipher.data.auth.DynamicBaseUrlInterceptor
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
@@ -22,6 +23,7 @@ class TransportManagerTest {
     private lateinit var bluetoothMeshTransport: BluetoothMeshTransport
     private lateinit var wifiDirectTransport: WifiDirectTransport
     private lateinit var p2pTransport: P2PTransport
+    private lateinit var dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
     private lateinit var transportManager: TransportManager
 
     @Before
@@ -34,6 +36,7 @@ class TransportManagerTest {
         bluetoothMeshTransport = mockk()
         wifiDirectTransport = mockk()
         p2pTransport = mockk()
+        dynamicBaseUrlInterceptor = mockk()
 
         every { appPreferences.connectionMode } returns flowOf(ConnectionMode.DIRECT.name)
         every { bluetoothMeshTransport.isAvailable() } returns false
@@ -48,7 +51,8 @@ class TransportManagerTest {
             retrofit = retrofit,
             bluetoothMeshTransport = bluetoothMeshTransport,
             wifiDirectTransport = wifiDirectTransport,
-            p2pTransport = p2pTransport
+            p2pTransport = p2pTransport,
+            dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor
         )
     }
 

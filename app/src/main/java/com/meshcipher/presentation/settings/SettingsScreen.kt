@@ -32,6 +32,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.MessageExpiryMode
@@ -63,10 +69,13 @@ fun SettingsScreen(
     val hasBluetoothPermissions by viewModel.hasBluetoothPermissions.collectAsState()
     val userId by viewModel.userId.collectAsState()
     val messageExpiryMode by viewModel.messageExpiryMode.collectAsState()
+    val relayServerUrl by viewModel.relayServerUrl.collectAsState()
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var showCopiedMessage by remember { mutableStateOf(false) }
     var hasNotificationPermission by remember { mutableStateOf(viewModel.hasNotificationPermission()) }
     var showExpiryDropdown by remember { mutableStateOf(false) }
+    var relayUrlInput by remember(relayServerUrl) { mutableStateOf(relayServerUrl) }
 
     LaunchedEffect(showCopiedMessage) {
         if (showCopiedMessage) {
@@ -611,6 +620,128 @@ fun SettingsScreen(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
                         tint = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Relay Server Section
+            Text(
+                text = "Relay Server",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Server URL",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Both users must use the same relay server for Direct and Tor Relay modes to work.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = relayUrlInput,
+                        onValueChange = { relayUrlInput = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = RobotoMonoFontFamily
+                        ),
+                        placeholder = {
+                            Text(
+                                text = AppPreferences.DEFAULT_RELAY_URL,
+                                fontFamily = RobotoMonoFontFamily,
+                                color = TextSecondary.copy(alpha = 0.5f)
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val trimmed = relayUrlInput.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    val url = if (!trimmed.endsWith("/")) "$trimmed/" else trimmed
+                                    viewModel.setRelayServerUrl(url)
+                                    relayUrlInput = url
+                                }
+                                focusManager.clearFocus()
+                            }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextMono,
+                            unfocusedTextColor = TextMono,
+                            focusedBorderColor = SecureGreen,
+                            unfocusedBorderColor = DividerSubtle,
+                            cursorColor = SecureGreen
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (relayServerUrl != AppPreferences.DEFAULT_RELAY_URL) {
+                            TextButton(
+                                onClick = {
+                                    viewModel.resetRelayServerUrl()
+                                    focusManager.clearFocus()
+                                },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = SecureGreen
+                                )
+                            ) {
+                                Text("Reset to Default")
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(1.dp))
+                        }
+
+                        TextButton(
+                            onClick = {
+                                val trimmed = relayUrlInput.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    val url = if (!trimmed.endsWith("/")) "$trimmed/" else trimmed
+                                    viewModel.setRelayServerUrl(url)
+                                    relayUrlInput = url
+                                }
+                                focusManager.clearFocus()
+                            },
+                            enabled = relayUrlInput.trim() != relayServerUrl,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = SecureGreen
+                            )
+                        ) {
+                            Text("Save")
+                        }
+                    }
+
+                    Text(
+                        text = "P2P modes (Bluetooth, WiFi Direct, P2P Tor) do not use the relay server.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary.copy(alpha = 0.7f)
                     )
                 }
             }

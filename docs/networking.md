@@ -15,6 +15,17 @@ enum class ConnectionMode {
 
 Stored in DataStore as a string preference. Read by `TransportManager` via `AppPreferences.connectionMode` Flow.
 
+## Custom Relay Server
+
+The relay server URL is configurable per-device via Settings > Relay Server. The default points to the project-hosted relay. Users can enter any URL pointing to a self-hosted instance of the relay server.
+
+- **DynamicBaseUrlInterceptor** rewrites every outgoing OkHttp request to the user's configured relay URL at request time (no app restart needed).
+- Both the Direct and Tor Relay transports use this interceptor, so changing the URL applies to both modes.
+- P2P modes (Bluetooth, WiFi Direct, P2P Tor) do not use the relay server and are unaffected.
+- Both sender and recipient must be connected to the same relay server for Direct/Tor Relay message delivery to work.
+
+See [Self-Hosting](self_hosting.md) for relay server setup instructions.
+
 ## Transport Priority per Mode
 
 ### `DIRECT` / `TOR_RELAY`

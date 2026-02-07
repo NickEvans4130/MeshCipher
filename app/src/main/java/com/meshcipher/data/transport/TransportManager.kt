@@ -2,6 +2,7 @@ package com.meshcipher.data.transport
 
 import com.google.gson.Gson
 import com.meshcipher.BuildConfig
+import com.meshcipher.data.auth.DynamicBaseUrlInterceptor
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.remote.api.RelayApiService
 import com.meshcipher.data.tor.TorManager
@@ -29,7 +30,8 @@ class TransportManager @Inject constructor(
     private val retrofit: Retrofit,
     private val bluetoothMeshTransport: BluetoothMeshTransport,
     private val wifiDirectTransport: WifiDirectTransport,
-    private val p2pTransport: P2PTransport
+    private val p2pTransport: P2PTransport,
+    private val dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -180,6 +182,7 @@ class TransportManager @Inject constructor(
                 .connectTimeout(60, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
+                .addInterceptor(dynamicBaseUrlInterceptor)
                 .apply {
                     if (BuildConfig.DEBUG) {
                         val loggingInterceptor = HttpLoggingInterceptor().apply {

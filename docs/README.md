@@ -14,6 +14,7 @@ Comprehensive technical reference for **MeshCipher**, a privacy-focused encrypte
 8. [Media Handling](media_handling.md) - AES-256-GCM encryption, MediaMessageEnvelope, cross-transport delivery
 9. [Data Storage](data_storage.md) - Room + SQLCipher schema, entities, DAOs, migrations
 10. [Privacy Features](privacy.md) - Disappearing messages, message sequence tracking, cleanup lifecycle
+11. [Self-Hosting](self_hosting.md) - Relay server setup, configuration, connecting clients
 
 ## System Overview
 

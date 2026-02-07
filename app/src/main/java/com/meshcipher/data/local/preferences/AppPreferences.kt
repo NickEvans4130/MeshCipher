@@ -20,6 +20,10 @@ class AppPreferences @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    companion object {
+        const val DEFAULT_RELAY_URL = "http://192.168.1.212:5000/"
+    }
+
     private object Keys {
         val USER_ID = stringPreferencesKey("user_id")
         val DISPLAY_NAME = stringPreferencesKey("display_name")
@@ -29,6 +33,7 @@ class AppPreferences @Inject constructor(
         val MESSAGE_EXPIRY_MODE = stringPreferencesKey("message_expiry_mode")
         val ONION_ADDRESS = stringPreferencesKey("onion_address")
         val HAS_SEEN_GUIDE = booleanPreferencesKey("has_seen_guide")
+        val RELAY_SERVER_URL = stringPreferencesKey("relay_server_url")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -108,6 +113,16 @@ class AppPreferences @Inject constructor(
     suspend fun setHasSeenGuide(seen: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.HAS_SEEN_GUIDE] = seen
+        }
+    }
+
+    val relayServerUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RELAY_SERVER_URL] ?: DEFAULT_RELAY_URL
+    }
+
+    suspend fun setRelayServerUrl(url: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.RELAY_SERVER_URL] = url
         }
     }
 }
