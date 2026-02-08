@@ -13,6 +13,7 @@ import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.presentation.guide.GuideScreen
 import com.meshcipher.presentation.navigation.MeshCipherNavigation
 import com.meshcipher.presentation.onboarding.OnboardingScreen
+import com.meshcipher.presentation.permissions.PermissionsScreen
 import com.meshcipher.presentation.theme.TacticalMeshCipherTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -38,10 +39,12 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     var hasIdentity by remember { mutableStateOf<Boolean?>(null) }
+                    var hasCompletedPermissions by remember { mutableStateOf(true) }
                     var hasSeenGuide by remember { mutableStateOf(true) }
                     val scope = rememberCoroutineScope()
 
                     LaunchedEffect(Unit) {
+                        hasCompletedPermissions = appPreferences.hasCompletedPermissions.first()
                         hasSeenGuide = appPreferences.hasSeenGuide.first()
                         hasIdentity = identityManager.hasIdentity()
                     }
@@ -54,12 +57,22 @@ class MainActivity : ComponentActivity() {
                             OnboardingScreen(
                                 onComplete = {
                                     hasIdentity = true
+                                    hasCompletedPermissions = false
                                     hasSeenGuide = false
                                 }
                             )
                         }
                         true -> {
-                            if (!hasSeenGuide) {
+                            if (!hasCompletedPermissions) {
+                                PermissionsScreen(
+                                    onComplete = {
+                                        hasCompletedPermissions = true
+                                        scope.launch {
+                                            appPreferences.setHasCompletedPermissions(true)
+                                        }
+                                    }
+                                )
+                            } else if (!hasSeenGuide) {
                                 GuideScreen(
                                     onFinish = {
                                         hasSeenGuide = true

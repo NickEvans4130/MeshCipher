@@ -75,4 +75,29 @@ object PermissionUtils {
                 PackageManager.PERMISSION_GRANTED
         }
     }
+
+    fun getCameraPermission(): Array<String> {
+        return arrayOf(Manifest.permission.CAMERA)
+    }
+
+    fun getAudioPermission(): Array<String> {
+        return arrayOf(Manifest.permission.RECORD_AUDIO)
+    }
+
+    fun getAllRuntimePermissions(): Array<String> {
+        val permissions = mutableSetOf<String>()
+        permissions.addAll(getRequiredBluetoothPermissions())
+        permissions.addAll(getWifiDirectPermissions())
+        permissions.addAll(getNotificationPermission())
+        permissions.addAll(getCameraPermission())
+        permissions.addAll(getAudioPermission())
+        return permissions.toTypedArray()
+    }
+
+    fun hasAllPermissions(context: Context): Boolean {
+        return getAllRuntimePermissions().all { permission ->
+            ContextCompat.checkSelfPermission(context, permission) ==
+                PackageManager.PERMISSION_GRANTED
+        }
+    }
 }

@@ -33,6 +33,7 @@ class AppPreferences @Inject constructor(
         val MESSAGE_EXPIRY_MODE = stringPreferencesKey("message_expiry_mode")
         val ONION_ADDRESS = stringPreferencesKey("onion_address")
         val HAS_SEEN_GUIDE = booleanPreferencesKey("has_seen_guide")
+        val HAS_COMPLETED_PERMISSIONS = booleanPreferencesKey("has_completed_permissions")
         val RELAY_SERVER_URL = stringPreferencesKey("relay_server_url")
     }
 
@@ -113,6 +114,16 @@ class AppPreferences @Inject constructor(
     suspend fun setHasSeenGuide(seen: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.HAS_SEEN_GUIDE] = seen
+        }
+    }
+
+    val hasCompletedPermissions: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.HAS_COMPLETED_PERMISSIONS] ?: false
+    }
+
+    suspend fun setHasCompletedPermissions(completed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.HAS_COMPLETED_PERMISSIONS] = completed
         }
     }
 
