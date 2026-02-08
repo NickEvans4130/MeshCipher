@@ -14,6 +14,7 @@ import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.media.MediaProcessor
 import com.meshcipher.data.media.VoicePlayer
 import com.meshcipher.data.media.VoiceRecorder
+import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.MediaAttachment
@@ -49,6 +50,7 @@ class ChatViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
     private val sendMessageUseCase: SendMessageUseCase,
     private val sendMediaMessageUseCase: SendMediaMessageUseCase,
+    private val identityManager: IdentityManager,
     private val mediaProcessor: MediaProcessor,
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
@@ -129,10 +131,16 @@ class ChatViewModel @Inject constructor(
         _messageInput.value = ""
 
         viewModelScope.launch {
+            val identity = identityManager.getIdentity()
+            if (identity == null) {
+                _sendingState.value = SendingState.Error("No identity available")
+                return@launch
+            }
+
             val result = sendMessageUseCase(
                 conversationId = conversationId,
                 contactId = conv.contactId,
-                senderId = "me",
+                senderId = identity.userId,
                 content = content
             )
 
@@ -269,10 +277,13 @@ class ChatViewModel @Inject constructor(
 
         _mediaSendingProgress.value = 0.7f
 
+        val identity = identityManager.getIdentity()
+            ?: return Result.failure(Exception("No identity available"))
+
         val result = sendMediaMessageUseCase(
             conversationId = conversationId,
             contactId = contactId,
-            senderId = "me",
+            senderId = identity.userId,
             mediaAttachment = attachment,
             encryptedFileBytes = encrypted.encryptedBytes
         )
@@ -326,10 +337,13 @@ class ChatViewModel @Inject constructor(
                         encryptionIv = encrypted.ivBase64
                     )
 
+                    val identity = identityManager.getIdentity()
+                        ?: return@withContext Result.failure(Exception("No identity available"))
+
                     sendMediaMessageUseCase(
                         conversationId = conversationId,
                         contactId = conv.contactId,
-                        senderId = "me",
+                        senderId = identity.userId,
                         mediaAttachment = attachment,
                         encryptedFileBytes = encrypted.encryptedBytes
                     )

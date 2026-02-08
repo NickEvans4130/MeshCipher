@@ -21,7 +21,7 @@ class AppPreferences @Inject constructor(
 ) {
 
     companion object {
-        const val DEFAULT_RELAY_URL = "http://192.168.1.212:5000/"
+        const val DEFAULT_RELAY_URL = "https://relay.meshcipher.com/"
     }
 
     private object Keys {

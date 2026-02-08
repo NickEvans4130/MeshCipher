@@ -56,7 +56,7 @@ class MessageRepositoryImpl @Inject constructor(
             content = String(encryptedContent),
             timestamp = timestamp,
             status = MessageStatus.valueOf(status),
-            isOwnMessage = senderId == "me",
+            isOwnMessage = recipientId != "me",
             mediaAttachment = attachment
         )
     }

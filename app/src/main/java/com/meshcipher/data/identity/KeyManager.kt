@@ -16,6 +16,7 @@ class KeyManager @Inject constructor() {
 
     companion object {
         private const val HARDWARE_KEY_ALIAS = "meshcipher_hardware_key"
+        private const val RELAY_AUTH_KEY_ALIAS = "meshcipher_relay_auth_key"
     }
 
     fun generateHardwareKey(): PublicKey {
@@ -70,6 +71,45 @@ class KeyManager @Inject constructor() {
         verifier.initVerify(publicKey)
         verifier.update(data)
         return verifier.verify(signature)
+    }
+
+    /**
+     * Get or generate an EC key for relay server authentication.
+     * This key does NOT require user authentication (biometric/PIN),
+     * so it can be used from background threads and interceptors.
+     */
+    fun getOrCreateRelayAuthKey(): PublicKey {
+        if (keyStore.containsAlias(RELAY_AUTH_KEY_ALIAS)) {
+            val entry = keyStore.getEntry(RELAY_AUTH_KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
+            return entry.certificate.publicKey
+        }
+
+        val keyPairGenerator = KeyPairGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_EC,
+            "AndroidKeyStore"
+        )
+
+        val spec = KeyGenParameterSpec.Builder(
+            RELAY_AUTH_KEY_ALIAS,
+            KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
+        )
+            .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+            .setDigests(KeyProperties.DIGEST_SHA256)
+            .build()
+
+        keyPairGenerator.initialize(spec)
+        return keyPairGenerator.generateKeyPair().public
+    }
+
+    fun signWithRelayAuthKey(data: ByteArray): ByteArray {
+        val entry = keyStore.getEntry(RELAY_AUTH_KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
+        val privateKey = entry.privateKey
+
+        val signature = Signature.getInstance("SHA256withECDSA")
+        signature.initSign(privateKey)
+        signature.update(data)
+
+        return signature.sign()
     }
 
     fun hasHardwareKey(): Boolean {
