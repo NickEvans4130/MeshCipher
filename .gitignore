@@ -74,6 +74,8 @@ keystore.properties
 
 # Documentation
 MeshCipher_Phase_*.md
+SCORECARD_TODO.md
+SECURITY_AUDIT_GUIDE.md
 
 # Releasing
 meshcipher-release.jks
