@@ -16,6 +16,8 @@ import com.meshcipher.data.media.VoicePlayer
 import com.meshcipher.data.media.VoiceRecorder
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
+import com.meshcipher.data.relay.WebSocketManager
+import com.meshcipher.data.relay.WebSocketState
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.MediaAttachment
@@ -56,6 +58,7 @@ class ChatViewModel @Inject constructor(
     private val receiveMessageUseCase: ReceiveMessageUseCase,
     private val identityManager: IdentityManager,
     private val appPreferences: AppPreferences,
+    private val webSocketManager: WebSocketManager,
     private val mediaProcessor: MediaProcessor,
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
@@ -113,18 +116,32 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             conversationRepository.markConversationAsRead(conversationId)
         }
-        // Poll for new messages every 5 seconds while chat is open
+        // Auto-mark as read when new messages arrive via WebSocket
+        viewModelScope.launch {
+            messages.collect {
+                conversationRepository.markConversationAsRead(conversationId)
+            }
+        }
+        // Fallback polling when WebSocket is disconnected
         viewModelScope.launch {
             val userId = appPreferences.userId.firstOrNull()
             if (!userId.isNullOrBlank()) {
+                // Immediate poll on chat open for instant first message
+                try {
+                    receiveMessageUseCase(userId)
+                    conversationRepository.markConversationAsRead(conversationId)
+                } catch (_: Exception) {}
+                // Then poll every 3s only when WS is down
                 while (true) {
-                    try {
-                        receiveMessageUseCase(userId)
-                        conversationRepository.markConversationAsRead(conversationId)
-                    } catch (e: Exception) {
-                        Timber.w(e, "Chat poll failed")
+                    delay(3_000)
+                    if (webSocketManager.connectionState.value != WebSocketState.CONNECTED) {
+                        try {
+                            receiveMessageUseCase(userId)
+                            conversationRepository.markConversationAsRead(conversationId)
+                        } catch (e: Exception) {
+                            Timber.w(e, "Chat poll failed")
+                        }
                     }
-                    delay(5_000)
                 }
             }
         }

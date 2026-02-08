@@ -4,6 +4,7 @@ import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -68,15 +69,15 @@ fun ChatScreen(
         uri?.let { viewModel.sendMediaMessage(context, it, MediaType.VIDEO) }
     }
 
+    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+
     val cameraLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicturePreview()
-    ) { bitmap ->
-        if (bitmap != null) {
-            val file = File(context.cacheDir, "camera_${System.currentTimeMillis()}.jpg")
-            file.outputStream().use { out ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            cameraImageUri?.let { uri ->
+                viewModel.sendMediaMessage(context, uri, MediaType.IMAGE)
             }
-            viewModel.sendMediaMessage(context, Uri.fromFile(file), MediaType.IMAGE)
         }
     }
 
@@ -223,7 +224,10 @@ fun ChatScreen(
             onDismiss = { viewModel.dismissMediaPicker() },
             onCameraClick = {
                 viewModel.dismissMediaPicker()
-                cameraLauncher.launch(null)
+                val photoFile = File(context.cacheDir, "camera_${System.currentTimeMillis()}.jpg")
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+                cameraImageUri = uri
+                cameraLauncher.launch(uri)
             },
             onGalleryClick = {
                 viewModel.dismissMediaPicker()

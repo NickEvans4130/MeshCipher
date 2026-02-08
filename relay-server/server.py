@@ -12,10 +12,14 @@ from functools import wraps
 import jwt as pyjwt
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 from cryptography.hazmat.primitives import hashes, serialization
+import json
+import threading
+
 from flask import Flask, jsonify, request, g, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_sock import Sock
 
 app = Flask(__name__)
 
@@ -67,6 +71,16 @@ limiter = Limiter(
     default_limits=["200 per minute"],
     storage_uri="memory://",
 )
+
+sock = Sock(app)
+
+# ---------------------------------------------------------------------------
+# WebSocket Active Connections
+# ---------------------------------------------------------------------------
+
+# Maps user_id -> WebSocket object for connected clients
+ws_connections = {}
+ws_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Models
@@ -338,6 +352,95 @@ def verify_challenge():
 
 
 # ---------------------------------------------------------------------------
+# WebSocket Endpoint
+# ---------------------------------------------------------------------------
+
+
+def ws_push_message(recipient_id, message_data):
+    """Push a message to a connected WebSocket client. Returns True if delivered."""
+    with ws_lock:
+        ws = ws_connections.get(recipient_id)
+    if ws is None:
+        return False
+    try:
+        ws.send(json.dumps({"type": "new_message", "message": message_data}))
+        return True
+    except Exception:
+        # Connection is dead, clean up
+        with ws_lock:
+            ws_connections.pop(recipient_id, None)
+        return False
+
+
+@sock.route("/api/v1/relay/ws")
+def websocket_endpoint(ws):
+    """Raw WebSocket endpoint. Client must send auth message first."""
+    user_id = None
+    try:
+        # Wait for auth message (timeout handled by OkHttp ping/pong)
+        auth_raw = ws.receive(timeout=30)
+        if auth_raw is None:
+            return
+
+        try:
+            auth_msg = json.loads(auth_raw)
+        except (json.JSONDecodeError, TypeError):
+            ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+            return
+
+        if auth_msg.get("type") != "auth" or not auth_msg.get("token"):
+            ws.send(json.dumps({"type": "error", "message": "Expected auth message"}))
+            return
+
+        # Verify JWT token
+        token = auth_msg["token"]
+        try:
+            payload = pyjwt.decode(
+                token, app.config["SECRET_KEY"], algorithms=["HS256"]
+            )
+            user_id = payload["user_id"]
+        except pyjwt.ExpiredSignatureError:
+            ws.send(json.dumps({"type": "error", "message": "Token expired"}))
+            return
+        except pyjwt.InvalidTokenError:
+            ws.send(json.dumps({"type": "error", "message": "Invalid token"}))
+            return
+
+        # Register this connection
+        with ws_lock:
+            ws_connections[user_id] = ws
+
+        ws.send(json.dumps({"type": "authenticated", "user_id": user_id}))
+
+        # Update last_seen
+        with app.app_context():
+            device = RegisteredDevice.query.filter_by(user_id=user_id).first()
+            if device:
+                device.last_seen = datetime.now(timezone.utc)
+                db.session.commit()
+
+        # Keep connection alive - receive pings/messages
+        while True:
+            msg = ws.receive(timeout=300)
+            if msg is None:
+                break
+            try:
+                data = json.loads(msg)
+                if data.get("type") == "ping":
+                    ws.send(json.dumps({"type": "pong"}))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    except Exception:
+        pass
+    finally:
+        if user_id:
+            with ws_lock:
+                if ws_connections.get(user_id) is ws:
+                    ws_connections.pop(user_id, None)
+
+
+# ---------------------------------------------------------------------------
 # Relay Endpoints (require authentication)
 # ---------------------------------------------------------------------------
 
@@ -381,10 +484,20 @@ def relay_message():
     db.session.add(message)
     db.session.commit()
 
+    # Try to push via WebSocket if recipient is connected
+    pushed = ws_push_message(recipient_id, {
+        "id": message.id,
+        "sender_id": sender_id,
+        "recipient_id": recipient_id,
+        "encrypted_content": encrypted_content,
+        "content_type": content_type,
+        "queued_at": message.queued_at.isoformat(),
+    })
+
     return (
         jsonify(
             {
-                "status": "queued",
+                "status": "pushed" if pushed else "queued",
                 "message_id": message.id,
                 "queued_at": message.queued_at.isoformat(),
             }

@@ -5,3 +5,4 @@ cryptography==46.0.4
 psycopg2-binary==2.9.9
 gunicorn==25.0.3
 PyJWT==2.11.0
+flask-sock==0.7.0

@@ -3,6 +3,8 @@ package com.meshcipher.presentation.conversations
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshcipher.data.local.preferences.AppPreferences
+import com.meshcipher.data.relay.WebSocketManager
+import com.meshcipher.data.relay.WebSocketState
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.usecase.GetConversationsUseCase
@@ -22,7 +24,8 @@ import javax.inject.Inject
 class ConversationsViewModel @Inject constructor(
     getConversationsUseCase: GetConversationsUseCase,
     private val receiveMessageUseCase: ReceiveMessageUseCase,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val webSocketManager: WebSocketManager
 ) : ViewModel() {
 
     val conversations: StateFlow<List<Conversation>> = getConversationsUseCase()
@@ -46,13 +49,16 @@ class ConversationsViewModel @Inject constructor(
             initialValue = ConnectionMode.DIRECT
         )
 
+    val wsState: StateFlow<WebSocketState> = webSocketManager.connectionState
+
     init {
-        // Poll for new messages immediately when conversations screen opens,
-        // then every 10 seconds while it's visible
+        // Fallback polling: only polls when WebSocket is disconnected
         viewModelScope.launch {
             while (true) {
-                pollMessages()
-                delay(10_000)
+                if (webSocketManager.connectionState.value != WebSocketState.CONNECTED) {
+                    pollMessages()
+                }
+                delay(15_000)
             }
         }
     }
