@@ -64,6 +64,21 @@ class ReceiveMessageUseCase @Inject constructor(
         return Result.success(processedCount)
     }
 
+    /**
+     * Process a single message received via WebSocket push and acknowledge it.
+     * Skips the HTTP fetch since the message data is already available.
+     */
+    suspend fun processAndAcknowledge(queued: QueuedMessage, localDeviceId: String): Result<Unit> {
+        return try {
+            processQueuedMessage(queued)
+            transportManager.getActiveTransport().acknowledgeMessages(localDeviceId, listOf(queued.id))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to process pushed message: %s", queued.id)
+            Result.failure(e)
+        }
+    }
+
     private suspend fun processQueuedMessage(queued: QueuedMessage) {
         when (queued.contentType) {
             1 -> processMediaMessage(queued)

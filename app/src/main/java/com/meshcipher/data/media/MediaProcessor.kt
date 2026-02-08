@@ -107,8 +107,8 @@ class MediaProcessor @Inject constructor() {
     }
 
     companion object {
-        private const val MAX_IMAGE_DIMENSION = 1280
-        private const val JPEG_QUALITY = 80
+        private const val MAX_IMAGE_DIMENSION = 2048
+        private const val JPEG_QUALITY = 90
         private const val MAX_VIDEO_SIZE = 15L * 1024 * 1024 // 15MB
     }
 }
