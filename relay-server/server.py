@@ -214,9 +214,16 @@ def register_device():
     if not device_id:
         return jsonify({"error": "Invalid device_id"}), 400
 
+    # Check by device_id first, then by user_id
     existing = RegisteredDevice.query.filter_by(device_id=device_id).first()
+    if not existing and user_id:
+        existing = RegisteredDevice.query.filter_by(user_id=user_id).first()
+
     if existing:
         existing.last_seen = datetime.now(timezone.utc)
+        existing.device_id = device_id
+        if user_id:
+            existing.user_id = user_id
         if public_key:
             existing.public_key = public_key
         db.session.commit()
@@ -228,8 +235,12 @@ def register_device():
         public_key=public_key if public_key else None,
     )
 
-    db.session.add(device)
-    db.session.commit()
+    try:
+        db.session.add(device)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Registration failed"}), 500
 
     return jsonify({"status": "registered", "id": device.id}), 201
 

@@ -15,6 +15,7 @@ import com.meshcipher.data.media.MediaProcessor
 import com.meshcipher.data.media.VoicePlayer
 import com.meshcipher.data.media.VoiceRecorder
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.MediaAttachment
@@ -23,10 +24,12 @@ import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
+import com.meshcipher.domain.usecase.ReceiveMessageUseCase
 import com.meshcipher.domain.usecase.SendMediaMessageUseCase
 import com.meshcipher.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,7 +53,9 @@ class ChatViewModel @Inject constructor(
     private val contactRepository: ContactRepository,
     private val sendMessageUseCase: SendMessageUseCase,
     private val sendMediaMessageUseCase: SendMediaMessageUseCase,
+    private val receiveMessageUseCase: ReceiveMessageUseCase,
     private val identityManager: IdentityManager,
+    private val appPreferences: AppPreferences,
     private val mediaProcessor: MediaProcessor,
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
@@ -107,6 +112,21 @@ class ChatViewModel @Inject constructor(
         // Mark conversation as read when chat is opened
         viewModelScope.launch {
             conversationRepository.markConversationAsRead(conversationId)
+        }
+        // Poll for new messages every 5 seconds while chat is open
+        viewModelScope.launch {
+            val userId = appPreferences.userId.firstOrNull()
+            if (!userId.isNullOrBlank()) {
+                while (true) {
+                    try {
+                        receiveMessageUseCase(userId)
+                        conversationRepository.markConversationAsRead(conversationId)
+                    } catch (e: Exception) {
+                        Timber.w(e, "Chat poll failed")
+                    }
+                    delay(5_000)
+                }
+            }
         }
     }
 
