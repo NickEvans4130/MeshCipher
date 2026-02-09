@@ -414,6 +414,21 @@ class ChatViewModel @Inject constructor(
         _sendingState.value = SendingState.Idle
     }
 
+    /**
+     * Decrypts media to an in-memory byte array (for images).
+     */
+    fun decryptMediaBytes(mediaId: String, mediaType: MediaType): ByteArray? {
+        return mediaFileManager.decryptMedia(mediaId, mediaType)
+    }
+
+    /**
+     * Decrypts media to a temporary file (for video/voice playback).
+     * Caller should delete the file when done.
+     */
+    fun decryptMediaToTempFile(mediaId: String, mediaType: MediaType): File? {
+        return mediaFileManager.decryptMediaToTempFile(mediaId, mediaType)
+    }
+
     private fun getFileName(context: Context, uri: Uri): String? {
         return try {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->

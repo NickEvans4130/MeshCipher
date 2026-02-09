@@ -148,6 +148,9 @@ dependencies {
     // JSON
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // EXIF orientation
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("io.coil-kt:coil-video:2.5.0")

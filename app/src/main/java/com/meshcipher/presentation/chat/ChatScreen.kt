@@ -312,19 +312,31 @@ private fun MediaMessageContent(
     viewModel: ChatViewModel,
     onMediaClick: (String, Boolean) -> Unit
 ) {
-    val localPath = attachment.localPath
-
     when (attachment.mediaType) {
         MediaType.IMAGE -> {
-            if (localPath != null && File(localPath).exists()) {
+            // Decrypt image to bitmap in memory
+            val bitmap = remember(attachment.mediaId) {
+                val bytes = viewModel.decryptMediaBytes(attachment.mediaId, MediaType.IMAGE)
+                if (bytes != null) {
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } else null
+            }
+
+            if (bitmap != null) {
                 AsyncImage(
-                    model = File(localPath),
+                    model = bitmap,
                     contentDescription = "Image",
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 100.dp, max = 250.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onMediaClick(localPath, false) },
+                        .clickable {
+                            // Decrypt to temp file for full-screen viewer
+                            val tempFile = viewModel.decryptMediaToTempFile(attachment.mediaId, MediaType.IMAGE)
+                            if (tempFile != null) {
+                                onMediaClick(tempFile.absolutePath, false)
+                            }
+                        },
                     contentScale = ContentScale.Crop
                 )
             } else {
@@ -342,14 +354,24 @@ private fun MediaMessageContent(
                     .heightIn(min = 100.dp, max = 250.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable {
-                        if (localPath != null && File(localPath).exists()) {
-                            onMediaClick(localPath, true)
+                        val tempFile = viewModel.decryptMediaToTempFile(attachment.mediaId, MediaType.VIDEO)
+                        if (tempFile != null) {
+                            onMediaClick(tempFile.absolutePath, true)
                         }
                     }
             ) {
-                if (localPath != null && File(localPath).exists()) {
+                // Decrypt thumbnail for video preview
+                val bitmap = remember(attachment.mediaId) {
+                    val bytes = viewModel.decryptMediaBytes(attachment.mediaId, MediaType.VIDEO)
+                    if (bytes != null) {
+                        try {
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        } catch (_: Exception) { null }
+                    } else null
+                }
+                if (bitmap != null) {
                     AsyncImage(
-                        model = File(localPath),
+                        model = bitmap,
                         contentDescription = "Video",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -409,9 +431,9 @@ private fun VoiceMessageBubble(
     ) {
         IconButton(
             onClick = {
-                val path = attachment.localPath
-                if (path != null && File(path).exists()) {
-                    viewModel.voicePlayer.play(path, attachment.mediaId)
+                val tempFile = viewModel.decryptMediaToTempFile(attachment.mediaId, MediaType.VOICE)
+                if (tempFile != null) {
+                    viewModel.voicePlayer.play(tempFile.absolutePath, attachment.mediaId)
                 }
             },
             modifier = Modifier.size(36.dp)
