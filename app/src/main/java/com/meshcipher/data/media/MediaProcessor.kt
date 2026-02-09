@@ -3,7 +3,9 @@ package com.meshcipher.data.media
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
@@ -41,9 +43,15 @@ class MediaProcessor @Inject constructor() {
             ?: throw IllegalArgumentException("Cannot decode image from URI: $uri")
         decodeStream.close()
 
-        val scaledBitmap = scaleBitmap(bitmap, MAX_IMAGE_DIMENSION)
-        if (scaledBitmap !== bitmap) {
+        // Read EXIF orientation and rotate if needed
+        val rotatedBitmap = correctOrientation(context, uri, bitmap)
+        if (rotatedBitmap !== bitmap) {
             bitmap.recycle()
+        }
+
+        val scaledBitmap = scaleBitmap(rotatedBitmap, MAX_IMAGE_DIMENSION)
+        if (scaledBitmap !== rotatedBitmap) {
+            rotatedBitmap.recycle()
         }
 
         val outputFile = File(context.cacheDir, "media_img_${System.currentTimeMillis()}.jpg")
@@ -81,6 +89,43 @@ class MediaProcessor @Inject constructor() {
     fun processVoice(file: File): File {
         // Voice is already recorded as AAC, pass through
         return file
+    }
+
+    private fun correctOrientation(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return bitmap
+            val exif = ExifInterface(inputStream)
+            inputStream.close()
+
+            val orientation = exif.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+
+            val matrix = Matrix()
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    matrix.postRotate(90f)
+                    matrix.preScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    matrix.postRotate(270f)
+                    matrix.preScale(-1f, 1f)
+                }
+                else -> return bitmap
+            }
+
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            rotated
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to read EXIF orientation")
+            bitmap
+        }
     }
 
     private fun scaleBitmap(bitmap: Bitmap, maxDimension: Int): Bitmap {
