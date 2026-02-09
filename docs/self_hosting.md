@@ -71,11 +71,14 @@ export DB_NAME="meshcipher"
 python server.py
 ```
 
-**Production (gunicorn):**
+**Production (gunicorn with gevent for WebSocket support):**
 
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5000 server:app
+pip install gevent gevent-websocket
+gunicorn -k gevent -w 1 --worker-connections 1000 -b 0.0.0.0:5000 server:app
 ```
+
+The server uses `flask-sock` for real-time WebSocket message delivery. Gevent async workers are required to support concurrent WebSocket connections alongside HTTP requests. Using `-w 1` ensures all WebSocket connections share the same in-memory connection registry.
 
 ### 6. (Optional) Systemd service
 
@@ -94,7 +97,7 @@ Environment=DB_USER=meshcipher
 Environment=DB_PASS=your-secure-password
 Environment=DB_HOST=localhost
 Environment=DB_NAME=meshcipher
-ExecStart=/opt/meshcipher/relay-server/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 server:app
+ExecStart=/opt/meshcipher/relay-server/venv/bin/gunicorn -k gevent -w 1 --worker-connections 1000 -b 0.0.0.0:5000 server:app
 Restart=always
 RestartSec=5
 

@@ -88,11 +88,27 @@ data class MediaMessageEnvelope(
 }
 ```
 
+## EXIF Metadata Stripping
+
+Before encryption, all images are processed by `MediaProcessor` which:
+
+1. Reads EXIF orientation and applies rotation correction to the bitmap
+2. Scales the image to a maximum dimension of 2048px at 90% JPEG quality
+3. Strips all identifying EXIF tags from the output file:
+   - GPS coordinates, altitude, speed, destination
+   - Timestamps and timezone offsets
+   - Device make, model, software, serial numbers
+   - Author, copyright, user comments
+   - Thumbnail data (which can contain its own EXIF)
+
+This prevents metadata-based identification of the sender, their device, or their location.
+
 ## Sending Flow
 
 ```
 1. User selects media (image/video) or records voice message
 2. Read raw bytes from content URI or file
+2a. (Images only) MediaProcessor strips EXIF metadata and corrects orientation
 3. MediaEncryptor.encrypt(rawBytes) -> EncryptedMedia
 4. Create MediaMessageEnvelope with:
    - Generated mediaId (UUID)
@@ -126,26 +142,44 @@ data class MediaMessageEnvelope(
 
 ## File Storage (`MediaFileManager`)
 
+### At-Rest Encryption
+
+All media files are encrypted at rest using per-file AES-256-GCM. Plaintext never touches the filesystem.
+
+**Encryption flow (on save):**
+1. Generate a random 256-bit AES key and let GCM generate a 96-bit IV
+2. Encrypt the plaintext bytes with `AES/GCM/NoPadding`
+3. Store the per-file key and IV in EncryptedSharedPreferences (`media_encryption_keys`)
+4. Write only the ciphertext to disk
+
+**Decryption flow (on display):**
+1. Read the per-file key and IV from EncryptedSharedPreferences
+2. Read the ciphertext from disk
+3. Decrypt with `AES/GCM/NoPadding` using the stored key and IV
+4. Return plaintext bytes (images) or write to a temporary cache file (video/voice)
+
 ### Directory Structure
 
 ```
 context.filesDir/
-  media/
-    image/   # .jpg, .png files keyed by mediaId
-    video/   # .mp4 files keyed by mediaId
-    voice/   # .m4a, .ogg files keyed by mediaId
+  media_encrypted/
+    image/   # AES-256-GCM encrypted files keyed by mediaId
+    video/   # AES-256-GCM encrypted files keyed by mediaId
+    voice/   # AES-256-GCM encrypted files keyed by mediaId
 ```
 
 ### Operations
 
 ```kotlin
-fun saveMedia(context: Context, mediaId: String, bytes: ByteArray, mediaType: String): String
-fun getMediaFile(context: Context, mediaId: String, mediaType: String): File?
-fun deleteMedia(context: Context, mediaId: String, mediaType: String)
-fun cleanupAllMedia(context: Context)  // Deletes entire media/ directory
+fun saveMedia(context: Context, mediaId: String, bytes: ByteArray, mediaType: MediaType): String
+fun decryptMedia(mediaId: String, mediaType: MediaType): ByteArray?
+fun decryptMediaToTempFile(mediaId: String, mediaType: MediaType): File?
+fun getMediaFile(context: Context, mediaId: String, mediaType: MediaType): File?
+fun deleteMedia(context: Context, mediaId: String, mediaType: MediaType)
+fun cleanupAllMedia(context: Context)
 ```
 
-Files are stored decrypted for fast UI access. When disappearing messages trigger cleanup, both the database record and the media file are deleted.
+`deleteMedia()` removes both the encrypted file on disk and the corresponding key/IV entries from EncryptedSharedPreferences. `cleanupAllMedia()` also removes any legacy unencrypted files from the old `media/` directory.
 
 ## Transport-Specific Behavior
 
@@ -185,7 +219,7 @@ data class MediaAttachment(
     val fileName: String,
     val fileSize: Long,
     val mimeType: String,
-    val localPath: String?,      // Path to decrypted file on disk
+    val localPath: String?,      // Path to encrypted file on disk (decrypted on demand)
     val durationMs: Long?,
     val width: Int?,
     val height: Int?,
@@ -194,18 +228,23 @@ data class MediaAttachment(
 )
 ```
 
-Stored in `MessageEntity.mediaMetadataJson` as serialized JSON. The `localPath` points to the decrypted file under `context.filesDir/media/`.
+Stored in `MessageEntity.mediaMetadataJson` as serialized JSON. The `localPath` points to the encrypted file under `context.filesDir/media_encrypted/`. The file is decrypted on demand for display.
 
 ## Encryption Layering
 
-Media messages have two layers of encryption:
+Media messages have three layers of encryption:
 
 ```
-Raw media bytes
-  -> AES-256-GCM (per-message random key)
-     -> MediaMessageEnvelope JSON (contains key + IV + ciphertext)
+Raw media bytes (EXIF stripped for images)
+  -> AES-256-GCM at-rest encryption (per-file random key, stored in EncryptedSharedPreferences)
+     -> Stored on disk as ciphertext
+
+  -> AES-256-GCM transport encryption (per-message random key)
+     -> MediaMessageEnvelope JSON (contains transport key + IV + ciphertext)
         -> Signal Protocol (Double Ratchet session encryption)
            -> Transport layer delivery
 ```
 
-The AES key never travels in the clear. It is embedded in the `MediaMessageEnvelope` which is itself encrypted by the Signal Protocol before any transport sees it.
+- **At rest**: Each file is encrypted with its own AES-256-GCM key. The key is stored in EncryptedSharedPreferences, which is itself backed by the Android Keystore. Plaintext never exists on the filesystem.
+- **In transit**: The transport encryption key is embedded in the `MediaMessageEnvelope` which is itself encrypted by the Signal Protocol before any transport sees it. The transport key never travels in the clear.
+- **EXIF stripping**: All identifying metadata (GPS, timestamps, device info) is removed from images before either encryption layer is applied.

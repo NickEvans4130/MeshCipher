@@ -67,9 +67,13 @@ For technical details on our security implementation, see:
 |----------|---------------|
 | End-to-end encryption | Signal Protocol (X3DH + Double Ratchet) |
 | Forward secrecy | Double Ratchet key derivation |
+| Persistent sessions | Signal Protocol state encrypted at rest in EncryptedSharedPreferences |
 | Database encryption | SQLCipher (AES-256-CBC + HMAC-SHA256) |
-| Media encryption | AES-256-GCM with per-message random keys |
+| Media encryption (transport) | AES-256-GCM with per-message random keys |
+| Media encryption (at rest) | Per-file AES-256-GCM with keys in EncryptedSharedPreferences |
+| EXIF metadata stripping | GPS, timestamps, device info, author data removed from all images |
 | Key storage | Android Keystore (hardware-backed, non-exportable) |
+| Real-time delivery | WebSocket (WSS) with JWT authentication |
 | Replay prevention | Per-sender message sequence tracking |
 | Metadata protection | Tor relay mode (IP hiding) or P2P modes (no server) |
 | Anonymous endpoints | P2P Tor via ED25519-V3 hidden services |

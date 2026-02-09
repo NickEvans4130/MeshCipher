@@ -188,6 +188,8 @@ EncryptedSharedPreferences (backed by Android Keystore master key) stores:
 | `TokenStorage` (`auth_prefs`) | JWT authentication tokens |
 | `IdentityStorage` | Identity metadata (userId, deviceId, public key) |
 | `DatabaseKeyProvider` (`db_key_prefs`) | SQLCipher 32-byte encryption key (base64) |
+| `SignalProtocolStoreImpl` (`signal_protocol_store`) | Identity key pair, registration ID, sessions, pre-keys, signed pre-keys, sender keys, Kyber pre-keys (all Base64-encoded serialized records) |
+| `MediaFileManager` (`media_encryption_keys`) | Per-file AES-256 keys and IVs for at-rest media encryption |
 | `EmbeddedTorManager` | ED25519-V3 hidden service private key |
 | `MessageSequenceTracker` | Per-sender message sequence numbers |
 

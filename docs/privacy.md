@@ -55,7 +55,24 @@ This deletes all messages older than the configured duration.
 
 ### Media Cleanup
 
-When messages with media attachments are deleted (either by expiry or manual deletion), the associated media files under `context.filesDir/media/` should also be cleaned up. `MediaFileManager.deleteMedia(mediaId, mediaType)` removes the decrypted file from disk.
+When messages with media attachments are deleted (either by expiry or manual deletion), the associated media files under `context.filesDir/media_encrypted/` are also cleaned up. `MediaFileManager.deleteMedia(mediaId, mediaType)` removes both the encrypted file from disk and the corresponding per-file encryption key and IV from EncryptedSharedPreferences.
+
+## EXIF Metadata Stripping
+
+All outgoing images have identifying EXIF metadata stripped before encryption and sending. This prevents metadata-based identification of the sender, their device, or their location.
+
+Stripped metadata includes:
+- **GPS**: Coordinates, altitude, speed, destination, timestamps, processing method
+- **Timestamps**: Original datetime, digitized datetime, timezone offsets
+- **Device info**: Camera make/model, software version, body and lens serial numbers, camera owner name
+- **Author**: Artist, copyright, user comments, image description
+- **Thumbnails**: Thumbnail dimensions (thumbnails can embed their own EXIF with location data)
+
+EXIF orientation is read and applied to the bitmap before stripping, ensuring photos display correctly despite the orientation tag being removed.
+
+## Encrypted Media at Rest
+
+Media files are never stored as plaintext on the filesystem. Each file is encrypted with a unique AES-256-GCM key before being written to disk. Per-file keys are stored in EncryptedSharedPreferences, backed by the Android Keystore hardware master key. Files are decrypted on demand: images to in-memory byte arrays, video/voice to temporary cache files for playback. See [Media Handling](media_handling.md) for full details.
 
 ## Message Sequence Tracking
 

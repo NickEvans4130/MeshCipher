@@ -113,9 +113,33 @@ Displayed in Contact Detail screen for manual out-of-band verification.
 - **Implementation**: Room database wraps SQLCipher via `SupportFactory(passphrase)`
 - **Result**: All messages, contacts, and conversations encrypted on disk. Database file is opaque binary without the key. The encryption key is hardware-bound through the Android Keystore chain.
 
-### Media Files
+### Signal Protocol State (`SignalProtocolStoreImpl`)
 
-Media files at rest on the filesystem are stored in their decrypted form under `context.filesDir/media/{type}/{mediaId}`. The encrypted form exists only during transport. This is a deliberate trade-off: once decrypted, media is available for the UI without re-decryption overhead. When disappearing messages trigger cleanup, the cleanup manager deletes both the database record and the media file.
+All Signal Protocol state is persisted in EncryptedSharedPreferences (`signal_protocol_store`), backed by the Android Keystore AES-256-GCM master key:
+
+- **Identity key pair**: Curve25519 key pair generated once on first launch, persisted as Base64-encoded serialized bytes
+- **Registration ID**: Random 32-bit integer, persisted alongside identity key pair
+- **Sessions**: Keyed by `session:{name}:{deviceId}`, serialized `SessionRecord` bytes
+- **Pre-keys**: Keyed by `prekey:{id}`, serialized `PreKeyRecord` bytes
+- **Signed pre-keys**: Keyed by `signed_prekey:{id}`, serialized `SignedPreKeyRecord` bytes
+- **Identity keys (remote)**: Keyed by `identity:{name}:{deviceId}`, serialized `IdentityKey` bytes
+- **Sender keys**: Keyed by `sender_key:{name}:{deviceId}:{distributionId}`, serialized `SenderKeyRecord` bytes
+- **Kyber pre-keys**: Keyed by `kyber_prekey:{id}`, serialized `KyberPreKeyRecord` bytes
+
+Sessions survive app restarts. The identity key pair is stable for the lifetime of the installation. All records are encrypted at rest via the EncryptedSharedPreferences AES-256-GCM layer.
+
+### Media Files (`MediaFileManager`)
+
+Media files are encrypted at rest using per-file AES-256-GCM encryption before being written to disk.
+
+- **Directory**: `context.filesDir/media_encrypted/{type}/{mediaId}`
+- **Encryption**: Each file gets a unique 256-bit AES key and 96-bit IV generated via `SecureRandom`
+- **Key storage**: Per-file keys and IVs stored in EncryptedSharedPreferences (`media_encryption_keys`), keyed by `key:{mediaId}` and `iv:{mediaId}`
+- **Decryption**: `decryptMedia(mediaId, mediaType)` returns plaintext `ByteArray` in memory; `decryptMediaToTempFile()` writes a temporary file for video/voice playback
+- **Display**: Images are decrypted to byte arrays and rendered via `BitmapFactory.decodeByteArray()`. Video and voice are decrypted to temporary cache files for `MediaPlayer`/`VideoView`.
+- **Cleanup**: `deleteMedia()` removes both the encrypted file and the corresponding keys from EncryptedSharedPreferences. `cleanupAllMedia()` also removes any legacy plaintext files under `media/`.
+
+Plaintext media never exists on the filesystem. The only unencrypted copies are transient in-memory byte arrays or temporary cache files created for playback.
 
 ## 4. Media Encryption (Transport)
 
@@ -167,7 +191,19 @@ The AES key and IV are included in the `MediaMessageEnvelope` JSON, which is its
 - Messages with sequence numbers <= last seen are rejected
 - Prevents re-delivery of previously processed messages
 
-## 6. Network Privacy (Metadata Protection)
+## 6. EXIF Metadata Stripping
+
+All images processed by `MediaProcessor` have identifying EXIF metadata stripped before encryption and sending. The following tag categories are removed:
+
+- **GPS / Location**: Latitude, longitude, altitude, speed, destination coordinates, timestamps, processing method, area information
+- **Date / Time**: Original datetime, digitized datetime, timezone offsets
+- **Device / Software**: Camera make, model, software version, serial numbers (body + lens), lens make/model, camera owner name
+- **Author / Copyright**: Artist, copyright, user comment, image description
+- **Thumbnails**: Thumbnail dimensions (thumbnails can contain their own EXIF with location data)
+
+EXIF orientation is read and applied to the bitmap before stripping, so photos are correctly rotated despite the orientation tag being removed. This is done via `ExifInterface` from the AndroidX exifinterface library.
+
+## 7. Network Privacy (Metadata Protection)
 
 ### Direct Mode
 - Content: encrypted (Signal Protocol)

@@ -7,11 +7,11 @@ Comprehensive technical reference for **MeshCipher**, a privacy-focused encrypte
 1. [Architecture](architecture.md) - Clean Architecture layers, data flow, dependency injection
 2. [Tech Stack](tech_stack.md) - Languages, frameworks, libraries, and build configuration
 3. [Cryptography](cryptography.md) - Identity, Signal Protocol, encryption at rest, media encryption
-4. [Transport Layer](networking.md) - Transport manager, fallback logic, all five transport modes
+4. [Transport Layer](networking.md) - Transport manager, WebSocket real-time delivery, fallback logic, all five transport modes
 5. [WiFi Direct](wifi_direct.md) - P2P discovery, socket protocol, chunked file transfer
 6. [P2P Tor](p2p_tor.md) - Embedded Tor, hidden services, SOCKS5 proxying, wire format
 7. [Bluetooth Mesh](bluetooth_mesh.md) - BLE advertising, GATT server, mesh routing, flooding algorithm
-8. [Media Handling](media_handling.md) - AES-256-GCM encryption, MediaMessageEnvelope, cross-transport delivery
+8. [Media Handling](media_handling.md) - AES-256-GCM encryption (transport + at-rest), EXIF stripping, MediaMessageEnvelope, cross-transport delivery
 9. [Data Storage](data_storage.md) - Room + SQLCipher schema, entities, DAOs, migrations
 10. [Privacy Features](privacy.md) - Disappearing messages, message sequence tracking, cleanup lifecycle
 11. [Self-Hosting](self_hosting.md) - Relay server setup, configuration, connecting clients
@@ -61,7 +61,8 @@ com.meshcipher/
     crypto/         # Signal Protocol encryption
     identity/       # Hardware key management, identity storage
     local/          # Room database, entities, DAOs, preferences
-    media/          # Media encryption, file management
+    media/          # Media encryption (transport + at-rest), EXIF stripping, file management
+    relay/          # WebSocket real-time message delivery
     remote/         # Relay server API (Retrofit)
     security/       # Message sequence tracking
     settings/       # (unused - preferences in local/)

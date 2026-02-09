@@ -7,13 +7,16 @@ A privacy-focused encrypted messaging app for Android with five independent tran
 
 - **End-to-End Encryption** - Signal Protocol (X3DH + Double Ratchet) for all messages
 - **Five Transport Modes** - Direct relay, Tor relay, WiFi Direct, Bluetooth mesh, P2P Tor hidden services
-- **Secure Media Sharing** - Images, video, and voice messages encrypted with AES-256-GCM
+- **Real-Time Messaging** - WebSocket push delivery with automatic fallback to polling
+- **Secure Media Sharing** - Images, video, and voice messages encrypted with AES-256-GCM in transit and at rest
+- **EXIF Metadata Stripping** - GPS, timestamps, device info automatically removed from all outgoing images
 - **Hardware-Bound Identity** - Ed25519 keys stored in Android Keystore (TEE/StrongBox)
 - **Offline Messaging** - Bluetooth mesh and WiFi Direct work without any internet
 - **Anonymous Messaging** - P2P Tor mode uses .onion hidden services with no relay server
 - **Disappearing Messages** - Configurable auto-delete (on close, 5min, 1hr, 24hr, 7d, 30d)
 - **QR Code Contact Exchange** - In-person key verification
 - **Encrypted Database** - SQLCipher (AES-256) for all local data
+- **Persistent Encrypted Sessions** - Signal Protocol state survives app restarts, encrypted at rest
 
 ## Transport Modes
 
@@ -78,7 +81,8 @@ com.meshcipher/
     crypto/         Signal Protocol encrypt/decrypt
     identity/       Hardware key management (Android Keystore)
     local/          Room + SQLCipher database, DataStore preferences
-    media/          AES-256-GCM media encryption, file storage
+    media/          AES-256-GCM media encryption (transport + at-rest), EXIF stripping
+    relay/          WebSocket real-time message delivery
     remote/         Relay server API (Retrofit)
     security/       Message sequence tracking (replay prevention)
     tor/            Embedded Tor, hidden services, P2P connections

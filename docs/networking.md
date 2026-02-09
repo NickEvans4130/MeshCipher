@@ -138,6 +138,58 @@ See [Bluetooth Mesh](bluetooth_mesh.md) for full details.
 
 See [P2P Tor](p2p_tor.md) for full details.
 
+## Real-Time WebSocket Delivery
+
+When the app is in the foreground, messages are delivered instantly via a WebSocket connection to the relay server.
+
+### WebSocketManager
+
+Singleton (`@Singleton`) managed by Hilt. Uses OkHttp's built-in `WebSocket` client.
+
+**Connection lifecycle:**
+1. `MeshCipherApplication.onCreate()` pre-warms the JWT auth token on the IO thread
+2. Once authenticated, opens a WebSocket to `wss://{relay}/api/v1/relay/ws`
+3. Sends `{"type":"auth","token":"<JWT>"}` as the first message
+4. Server validates JWT and registers the connection for the user
+5. Server pushes `{"type":"new_message",...}` when messages arrive for this user
+6. Client processes pushed messages directly via `ReceiveMessageUseCase.processAndAcknowledge()`
+
+**Reconnection:**
+- Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s (max 30s)
+- Automatic reconnect on failure or close
+- OkHttp ping interval: 25 seconds (keeps connection alive through proxies)
+
+**Foreground/background management:**
+- `ProcessLifecycleOwner.onStart()`: reconnect WebSocket
+- `ProcessLifecycleOwner.onStop()`: disconnect WebSocket
+- WebSocket is only active when the app is in the foreground
+
+**Connection state:**
+```kotlin
+enum class WebSocketState { DISCONNECTED, CONNECTING, AUTHENTICATING, CONNECTED }
+```
+
+Exposed as `StateFlow<WebSocketState>` and observed by ViewModels.
+
+### Fallback Polling
+
+When the WebSocket is disconnected (background, network issues), HTTP polling provides fallback delivery:
+
+- **ConversationsViewModel**: 15-second poll interval, only when WebSocket is not connected
+- **ChatViewModel**: 3-second poll interval with immediate first poll on chat open, only when WebSocket is not connected
+- **WorkManager**: 15-minute background sync (catches anything missed while app was killed)
+
+### Server-Side WebSocket
+
+The relay server uses `flask-sock` for raw WebSocket support:
+
+- `@sock.route("/api/v1/relay/ws")` endpoint
+- Active connections tracked in `ws_connections` dict (user_id -> WebSocket)
+- When `POST /api/v1/relay/message` receives a message, it checks if the recipient has an active WebSocket:
+  - **Connected**: Message pushed immediately via WebSocket, marked as delivered (status: `"pushed"`)
+  - **Not connected**: Message queued for HTTP polling (status: `"queued"`)
+- Gunicorn runs with gevent async workers (`-k gevent -w 1`) to support concurrent WebSocket connections
+
 ## Message Reception
 
 Each transport has its own receive path, but all converge to the same processing logic:
@@ -154,6 +206,6 @@ Each transport has its own receive path, but all converge to the same processing
 
 1. Encrypted payload parsed as `MediaMessageEnvelope` JSON
 2. `MediaEncryptor.decrypt(encryptedData, key, iv)` produces raw media bytes
-3. `MediaFileManager.saveMedia(mediaId, bytes, mediaType)` writes to `files/media/{type}/{mediaId}`
-4. Message entity created with `MediaAttachment` containing local file path
-5. ChatScreen renders media inline based on `mediaType` (IMAGE, VIDEO, VOICE)
+3. `MediaFileManager.saveMedia(mediaId, bytes, mediaType)` encrypts with per-file AES-256-GCM key and writes ciphertext to `files/media_encrypted/{type}/{mediaId}`
+4. Message entity created with `MediaAttachment` containing encrypted file path
+5. ChatScreen decrypts media on demand: images to byte arrays via `decryptMedia()`, video/voice to temp files via `decryptMediaToTempFile()`

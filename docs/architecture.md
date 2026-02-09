@@ -105,7 +105,8 @@ Implements domain interfaces and handles all I/O:
 | `crypto/` | Signal Protocol session management, encrypt/decrypt |
 | `identity/` | Hardware-backed key generation (Android Keystore), identity persistence |
 | `local/` | Room database (SQLCipher), entities, DAOs, DataStore preferences |
-| `media/` | AES-256-GCM encryption, file storage management |
+| `media/` | AES-256-GCM encryption (transport + at-rest), file storage, EXIF stripping |
+| `relay/` | WebSocketManager (real-time push delivery via OkHttp WebSocket) |
 | `remote/` | Retrofit API service for relay server |
 | `security/` | Message sequence tracking (replay attack prevention) |
 | `tor/` | Orbot integration, embedded Tor daemon, hidden service server, P2P client |
@@ -117,7 +118,7 @@ Implements domain interfaces and handles all I/O:
 
 Hilt modules provide:
 
-- **Singletons**: Database, DAOs, Repositories, TransportManager, IdentityManager, SignalProtocolManager, AppPreferences, TorManager, BluetoothMeshManager, WifiDirectManager, P2PConnectionManager, MediaEncryptor, MediaFileManager, MessageCleanupManager, MessageSequenceTracker
+- **Singletons**: Database, DAOs, Repositories, TransportManager, IdentityManager, SignalProtocolManager, AppPreferences, TorManager, BluetoothMeshManager, WifiDirectManager, P2PConnectionManager, MediaEncryptor, MediaFileManager, WebSocketManager, MessageCleanupManager, MessageSequenceTracker
 - **ViewModelScoped**: Use cases injected via `@HiltViewModel` constructor
 
 ## Data Flow: Sending a Message
@@ -140,6 +141,20 @@ Hilt modules provide:
 8. UI updated via Flow<List<Message>>
 ```
 
+## Data Flow: Receiving a Message (WebSocket)
+
+```
+1. WebSocketManager receives {"type":"new_message",...} from server
+2. Parses QueuedMessage from JSON payload
+3. ReceiveMessageUseCase.processAndAcknowledge(queuedMessage)
+   -> Decrypts with SignalProtocolManager
+   -> Saves to Room database
+   -> Acknowledges receipt to server
+4. UI updates automatically via Room Flow<List<Message>>
+```
+
+If WebSocket is disconnected, messages are received via HTTP polling (3s in chat, 15s on conversations list, 15min background WorkManager).
+
 ## Data Flow: Receiving Media
 
 ```
@@ -147,8 +162,13 @@ Hilt modules provide:
 2. Payload parsed as MediaMessageEnvelope JSON
 3. MediaEncryptor.decrypt(envelope.encryptedData, envelope.encryptionKey, envelope.encryptionIv)
 4. MediaFileManager.saveMedia(mediaId, decryptedBytes, mediaType)
-5. Message entity created with MediaAttachment referencing local file path
-6. ChatScreen observes messages Flow and renders media inline
+   -> Encrypts with per-file AES-256-GCM key
+   -> Writes ciphertext to media_encrypted/{type}/{mediaId}
+   -> Stores per-file key in EncryptedSharedPreferences
+5. Message entity created with MediaAttachment referencing encrypted file path
+6. ChatScreen decrypts media on demand for display:
+   -> Images: decryptMedia() -> ByteArray -> BitmapFactory.decodeByteArray()
+   -> Video/Voice: decryptMediaToTempFile() -> temporary File for playback
 ```
 
 ## Foreground Services

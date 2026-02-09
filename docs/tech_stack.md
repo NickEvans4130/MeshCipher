@@ -28,7 +28,7 @@
 | Room | SQLite ORM with Flow-based reactive queries |
 | SQLCipher | AES-256 transparent database encryption |
 | DataStore Preferences | Key-value preferences (connection mode, expiry settings) |
-| EncryptedSharedPreferences | Sensitive values (tokens, Tor private keys) |
+| EncryptedSharedPreferences | Sensitive values (tokens, Signal Protocol state, media encryption keys, Tor private keys) |
 
 ## Cryptography
 
@@ -45,6 +45,7 @@
 | Library | Purpose |
 |---------|---------|
 | Retrofit 2 + OkHttp | REST API client for relay server |
+| OkHttp WebSocket | Real-time message delivery (built-in WebSocket client) |
 | OkHttp SOCKS Proxy | Tor relay mode (proxy through 127.0.0.1:9050) |
 | Android WiFi P2P (WifiP2pManager) | WiFi Direct discovery and group formation |
 | Android Bluetooth LE | BLE advertising, scanning, GATT server/client |
@@ -68,6 +69,7 @@
 | Timber | Structured logging |
 | Gson | JSON serialization (MediaMessageEnvelope, P2PMessage) |
 | ZXing | QR code generation and scanning |
+| AndroidX ExifInterface | EXIF metadata reading (orientation) and stripping (privacy) |
 
 ## Known Dependency Conflicts
 
