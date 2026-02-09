@@ -60,7 +60,9 @@ class MediaProcessor @Inject constructor() {
         }
         scaledBitmap.recycle()
 
-        Timber.d("Processed image: %dx%d -> %d bytes",
+        stripExifMetadata(outputFile)
+
+        Timber.d("Processed image: %dx%d -> %d bytes (EXIF stripped)",
             originalWidth, originalHeight, outputFile.length())
 
         return outputFile
@@ -89,6 +91,19 @@ class MediaProcessor @Inject constructor() {
     fun processVoice(file: File): File {
         // Voice is already recorded as AAC, pass through
         return file
+    }
+
+    private fun stripExifMetadata(file: File) {
+        try {
+            val exif = ExifInterface(file)
+            for (tag in EXIF_TAGS_TO_STRIP) {
+                exif.setAttribute(tag, null)
+            }
+            exif.saveAttributes()
+            Timber.d("Stripped EXIF metadata from %s", file.name)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to strip EXIF metadata")
+        }
     }
 
     private fun correctOrientation(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
@@ -155,5 +170,51 @@ class MediaProcessor @Inject constructor() {
         private const val MAX_IMAGE_DIMENSION = 2048
         private const val JPEG_QUALITY = 90
         private const val MAX_VIDEO_SIZE = 15L * 1024 * 1024 // 15MB
+
+        /** EXIF tags that can identify the sender, device, or location. */
+        private val EXIF_TAGS_TO_STRIP = arrayOf(
+            // GPS / Location
+            ExifInterface.TAG_GPS_LATITUDE,
+            ExifInterface.TAG_GPS_LATITUDE_REF,
+            ExifInterface.TAG_GPS_LONGITUDE,
+            ExifInterface.TAG_GPS_LONGITUDE_REF,
+            ExifInterface.TAG_GPS_ALTITUDE,
+            ExifInterface.TAG_GPS_ALTITUDE_REF,
+            ExifInterface.TAG_GPS_TIMESTAMP,
+            ExifInterface.TAG_GPS_DATESTAMP,
+            ExifInterface.TAG_GPS_PROCESSING_METHOD,
+            ExifInterface.TAG_GPS_AREA_INFORMATION,
+            ExifInterface.TAG_GPS_SPEED,
+            ExifInterface.TAG_GPS_SPEED_REF,
+            ExifInterface.TAG_GPS_DEST_LATITUDE,
+            ExifInterface.TAG_GPS_DEST_LATITUDE_REF,
+            ExifInterface.TAG_GPS_DEST_LONGITUDE,
+            ExifInterface.TAG_GPS_DEST_LONGITUDE_REF,
+            // Date / Time
+            ExifInterface.TAG_DATETIME,
+            ExifInterface.TAG_DATETIME_DIGITIZED,
+            ExifInterface.TAG_DATETIME_ORIGINAL,
+            ExifInterface.TAG_OFFSET_TIME,
+            ExifInterface.TAG_OFFSET_TIME_DIGITIZED,
+            ExifInterface.TAG_OFFSET_TIME_ORIGINAL,
+            // Device / Software
+            ExifInterface.TAG_MAKE,
+            ExifInterface.TAG_MODEL,
+            ExifInterface.TAG_SOFTWARE,
+            ExifInterface.TAG_IMAGE_UNIQUE_ID,
+            ExifInterface.TAG_CAMERA_OWNER_NAME,
+            ExifInterface.TAG_BODY_SERIAL_NUMBER,
+            ExifInterface.TAG_LENS_MAKE,
+            ExifInterface.TAG_LENS_MODEL,
+            ExifInterface.TAG_LENS_SERIAL_NUMBER,
+            // Author / Copyright
+            ExifInterface.TAG_ARTIST,
+            ExifInterface.TAG_COPYRIGHT,
+            ExifInterface.TAG_USER_COMMENT,
+            ExifInterface.TAG_IMAGE_DESCRIPTION,
+            // Thumbnail (can contain its own EXIF with location)
+            ExifInterface.TAG_THUMBNAIL_IMAGE_LENGTH,
+            ExifInterface.TAG_THUMBNAIL_IMAGE_WIDTH,
+        )
     }
 }
