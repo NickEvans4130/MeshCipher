@@ -64,8 +64,7 @@ class MediaFileManager @Inject constructor(
         val file = File(dir, mediaId)
         file.writeBytes(encryptedBytes)
 
-        Timber.d("Saved encrypted media %s (%d bytes plaintext, %d bytes on disk)",
-            mediaId, bytes.size, encryptedBytes.size)
+        Timber.d("Saved encrypted media (%d bytes on disk)", encryptedBytes.size)
         return file.absolutePath
     }
 

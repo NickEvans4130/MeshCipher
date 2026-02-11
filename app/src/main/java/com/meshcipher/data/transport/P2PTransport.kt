@@ -228,7 +228,7 @@ class P2PTransport @Inject constructor(
 
         val result = p2pConnectionManager.sendMessage(onionAddress, p2pMessage)
         return if (result.isSuccess) {
-            Timber.d("P2P message %s sent to %s via %s (type=%s)", messageId, recipientUserId, onionAddress, messageType)
+            Timber.d("P2P message sent (type=%s)", messageType)
             Result.success(messageId)
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("P2P send failed"))

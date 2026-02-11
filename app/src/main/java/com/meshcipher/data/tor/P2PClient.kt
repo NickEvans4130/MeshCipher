@@ -25,17 +25,17 @@ class P2PClient @Inject constructor(
                 try {
                     P2PMessage.readFromStream(socket.getInputStream())
                 } catch (e: Exception) {
-                    Timber.w(e, "Failed to read ACK from %s", onionAddress)
+                    Timber.w(e, "Failed to read ACK from peer")
                     null
                 }
             } else {
                 null
             }
 
-            Timber.d("Sent P2P message %s to %s", message.messageId, onionAddress)
+            Timber.d("Sent P2P message to peer")
             Result.success(ack)
         } catch (e: Exception) {
-            Timber.e(e, "Failed to send P2P message to %s", onionAddress)
+            Timber.e(e, "Failed to send P2P message to peer")
             // Remove stale connection
             connectionPool.remove(onionAddress)?.let { socket ->
                 try { socket.close() } catch (_: Exception) {}
@@ -63,7 +63,7 @@ class P2PClient @Inject constructor(
         socket.connect(address, CONNECT_TIMEOUT_MS)
 
         connectionPool[onionAddress] = socket
-        Timber.d("Established connection to %s via Tor SOCKS proxy", onionAddress)
+        Timber.d("Established connection via Tor SOCKS proxy")
 
         return socket
     }
@@ -72,9 +72,9 @@ class P2PClient @Inject constructor(
         connectionPool.remove(onionAddress)?.let { socket ->
             try {
                 socket.close()
-                Timber.d("Disconnected from %s", onionAddress)
+                Timber.d("Disconnected from peer")
             } catch (e: Exception) {
-                Timber.w(e, "Error disconnecting from %s", onionAddress)
+                Timber.w(e, "Error disconnecting from peer")
             }
         }
     }

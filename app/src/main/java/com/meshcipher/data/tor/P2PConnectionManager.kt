@@ -66,7 +66,7 @@ class P2PConnectionManager @Inject constructor(
             val status = embeddedTorManager.status.value
             if (status.state == EmbeddedTorManager.State.RUNNING && status.onionAddress != null) {
                 appPreferences.setOnionAddress(status.onionAddress)
-                Timber.d("P2P Tor fully started. Onion: %s", status.onionAddress)
+                Timber.d("P2P Tor fully started, hidden service active")
             } else {
                 Timber.e("P2P Tor failed to start. State: %s, Error: %s",
                     status.state, status.errorMessage)
