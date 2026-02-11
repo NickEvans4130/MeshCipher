@@ -64,8 +64,7 @@ class MediaFileManager @Inject constructor(
         val file = File(dir, mediaId)
         file.writeBytes(encryptedBytes)
 
-        Timber.d("Saved encrypted media %s (%d bytes plaintext, %d bytes on disk)",
-            mediaId, bytes.size, encryptedBytes.size)
+        Timber.d("Saved encrypted media (%d bytes on disk)", encryptedBytes.size)
         return file.absolutePath
     }
 
@@ -98,6 +97,7 @@ class MediaFileManager @Inject constructor(
     /**
      * Decrypts media to a temporary file for playback (video/voice).
      * Caller is responsible for deleting the temp file when done.
+     * File is created in app-private cache with deleteOnExit set.
      */
     fun decryptMediaToTempFile(mediaId: String, mediaType: MediaType): File? {
         val plaintext = decryptMedia(mediaId, mediaType) ?: return null
@@ -106,9 +106,23 @@ class MediaFileManager @Inject constructor(
             MediaType.VIDEO -> ".mp4"
             MediaType.VOICE -> ".aac"
         }
-        val tempFile = File(context.cacheDir, "dec_${mediaId}$ext")
+        val tempDir = File(context.cacheDir, "decrypted_media")
+        tempDir.mkdirs()
+        val tempFile = File(tempDir, "dec_${mediaId}$ext")
         tempFile.writeBytes(plaintext)
+        tempFile.deleteOnExit()
         return tempFile
+    }
+
+    /**
+     * Cleans up all decrypted temp files from the cache directory.
+     * Should be called when the app goes to background or on startup.
+     */
+    fun cleanupTempFiles() {
+        val tempDir = File(context.cacheDir, "decrypted_media")
+        if (tempDir.exists()) {
+            tempDir.listFiles()?.forEach { it.delete() }
+        }
     }
 
     fun getMediaFile(context: Context, mediaId: String, mediaType: MediaType): File? {

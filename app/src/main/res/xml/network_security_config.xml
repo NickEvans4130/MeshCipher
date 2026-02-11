@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!--
-        Allow cleartext traffic for WiFi Direct P2P connections.
-        WiFi Direct uses local TCP sockets which are considered cleartext.
-        This is safe because P2P traffic stays on the local network.
-    -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- Block cleartext traffic by default -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+
+    <!-- Allow cleartext only for localhost (WiFi Direct local sockets, Tor SOCKS proxy) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
 </network-security-config>

@@ -170,7 +170,7 @@ private fun connectionTagFor(mode: ConnectionMode): String {
 
 private fun generateGhostText(seed: String): String {
     val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz0123456789+/="
-    val random = java.util.Random(seed.hashCode().toLong())
+    val random = java.security.SecureRandom(seed.toByteArray())
     return buildString {
         repeat(seed.length.coerceIn(8, 28)) {
             append(chars[random.nextInt(chars.length)])
