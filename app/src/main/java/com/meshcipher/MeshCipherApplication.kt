@@ -9,6 +9,7 @@ import androidx.work.*
 import com.meshcipher.data.cleanup.MessageCleanupManager
 import com.meshcipher.data.auth.RelayAuthManager
 import com.meshcipher.data.local.preferences.AppPreferences
+import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.relay.WebSocketManager
 import com.meshcipher.data.transport.P2PTransport
 import com.meshcipher.data.transport.WifiDirectTransport
@@ -48,6 +49,9 @@ class MeshCipherApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var relayAuthManager: RelayAuthManager
 
+    @Inject
+    lateinit var mediaFileManager: MediaFileManager
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -59,6 +63,7 @@ class MeshCipherApplication : Application(), Configuration.Provider {
 
         Timber.d("MeshCipher application started")
 
+        mediaFileManager.cleanupTempFiles()
         scheduleMessageSync()
         scheduleMessageCleanup()
         setupAppLifecycleObserver()
@@ -155,6 +160,7 @@ class MeshCipherApplication : Application(), Configuration.Provider {
             override fun onStop(owner: LifecycleOwner) {
                 Timber.d("App backgrounded, disconnecting WebSocket")
                 webSocketManager.disconnect()
+                mediaFileManager.cleanupTempFiles()
             }
         })
     }

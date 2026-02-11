@@ -246,6 +246,7 @@ class ChatViewModel @Inject constructor(
                     ?: throw IllegalArgumentException("Cannot open URI")
                 val tempFile = File(context.cacheDir, "voice_send_${System.currentTimeMillis()}.aac")
                 inputStream.use { input -> tempFile.outputStream().use { output -> input.copyTo(output) } }
+                tempFile.deleteOnExit()
                 tempFile
             }
         }
