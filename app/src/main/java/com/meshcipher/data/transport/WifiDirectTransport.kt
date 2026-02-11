@@ -74,7 +74,7 @@ class WifiDirectTransport @Inject constructor(
                     // Connect to group owner as client
                     val goAddress = info.groupOwnerAddress?.hostAddress
                     if (goAddress != null) {
-                        Timber.d("Connecting to Group Owner: $goAddress")
+                        Timber.d("Connecting to Group Owner")
                         socketManager.connectToServer(goAddress)
                     }
                 }

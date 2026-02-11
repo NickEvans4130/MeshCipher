@@ -64,7 +64,7 @@ class WifiDirectSocketManager @Inject constructor() {
                     try {
                         val clientSocket = serverSocket?.accept() ?: break
                         val clientAddress = clientSocket.inetAddress.hostAddress ?: "unknown"
-                        Timber.d("Client connected: $clientAddress")
+                        Timber.d("Client connected")
 
                         handleClient(clientSocket, clientAddress)
                     } catch (e: IOException) {
@@ -122,12 +122,12 @@ class WifiDirectSocketManager @Inject constructor() {
                     try {
                         val message = inputStream.readObject() as? WifiDirectMessage
                         message?.let {
-                            Timber.d("Received message from $clientAddress: ${it::class.simpleName}")
+                            Timber.d("Received message: ${it::class.simpleName}")
                             _receivedMessages.emit(it)
                         }
                     } catch (e: IOException) {
                         if (isActive) {
-                            Timber.d("Client disconnected: $clientAddress")
+                            Timber.d("Client disconnected")
                         }
                         break
                     } catch (e: ClassNotFoundException) {
@@ -135,7 +135,7 @@ class WifiDirectSocketManager @Inject constructor() {
                     }
                 }
             } catch (e: IOException) {
-                Timber.e(e, "Error handling client $clientAddress")
+                Timber.e(e, "Error handling client")
             } finally {
                 clientSockets.remove(clientAddress)
                 clientOutputStreams.remove(clientAddress)
@@ -190,10 +190,10 @@ class WifiDirectSocketManager @Inject constructor() {
                 }
             }
 
-            Timber.d("Connected to server: $serverAddress")
+            Timber.d("Connected to server")
             true
         } catch (e: IOException) {
-            Timber.e(e, "Failed to connect to server: $serverAddress")
+            Timber.e(e, "Failed to connect to server")
             false
         }
     }
@@ -203,7 +203,7 @@ class WifiDirectSocketManager @Inject constructor() {
             try {
                 socket.close()
             } catch (e: IOException) {
-                Timber.e(e, "Error disconnecting from $address")
+                Timber.e(e, "Error disconnecting")
             }
         }
         clientSockets.remove(address)
@@ -220,7 +220,7 @@ class WifiDirectSocketManager @Inject constructor() {
     suspend fun sendMessage(address: String, message: WifiDirectMessage): Boolean = withContext(Dispatchers.IO) {
         val outputStream = clientOutputStreams[address]
         if (outputStream == null) {
-            Timber.e("No connection to $address")
+            Timber.e("No connection to peer")
             return@withContext false
         }
 
@@ -229,10 +229,10 @@ class WifiDirectSocketManager @Inject constructor() {
                 outputStream.writeObject(message)
                 outputStream.flush()
             }
-            Timber.d("Sent message to $address: ${message::class.simpleName}")
+            Timber.d("Sent message: ${message::class.simpleName}")
             true
         } catch (e: IOException) {
-            Timber.e(e, "Failed to send message to $address")
+            Timber.e(e, "Failed to send message")
             false
         }
     }
