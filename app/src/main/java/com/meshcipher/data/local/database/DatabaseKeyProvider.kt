@@ -3,6 +3,7 @@ package com.meshcipher.data.local.database
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.meshcipher.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import net.sqlcipher.database.SQLiteDatabase
 import java.io.File
@@ -34,7 +35,7 @@ class DatabaseKeyProvider @Inject constructor(
         // If an existing database predates the key provider, use the legacy passphrase
         if (dbFile.exists() && !migrated) {
             prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
-            val legacyKey = SQLiteDatabase.getBytes(LEGACY_PASSPHRASE.toCharArray())
+            val legacyKey = SQLiteDatabase.getBytes(BuildConfig.LEGACY_DB_PASSPHRASE.toCharArray())
             prefs.edit()
                 .putString(KEY_DB_PASSPHRASE, java.util.Base64.getEncoder().encodeToString(legacyKey))
                 .apply()
@@ -61,6 +62,5 @@ class DatabaseKeyProvider @Inject constructor(
     companion object {
         private const val KEY_DB_PASSPHRASE = "sqlcipher_key"
         private const val KEY_MIGRATED = "key_migrated"
-        private const val LEGACY_PASSPHRASE = "meshcipher_secret_key"
     }
 }

@@ -31,6 +31,19 @@ android {
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
+
+        // Load secrets from local.properties (gitignored)
+        val localProps = Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) {
+            localProps.load(localPropsFile.inputStream())
+        }
+
+        buildConfigField(
+            "String",
+            "LEGACY_DB_PASSPHRASE",
+            "\"${localProps.getProperty("legacy.db.passphrase", "meshcipher_secret_key")}\""
+        )
     }
 
     signingConfigs {
