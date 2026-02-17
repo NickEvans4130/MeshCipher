@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -70,6 +71,8 @@ fun SettingsScreen(
     val userId by viewModel.userId.collectAsState()
     val messageExpiryMode by viewModel.messageExpiryMode.collectAsState()
     val relayServerUrl by viewModel.relayServerUrl.collectAsState()
+    val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
+    val preferTor by viewModel.preferTor.collectAsState()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var showCopiedMessage by remember { mutableStateOf(false) }
@@ -283,40 +286,140 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            ConnectionModeCard(
-                title = "Direct",
-                description = "Fast connection directly to relay server. Best performance.",
-                selected = connectionMode == ConnectionMode.DIRECT,
-                onClick = { viewModel.setConnectionMode(ConnectionMode.DIRECT) }
-            )
+            // Smart Mode toggle
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (smartModeEnabled) TacticalElevated else TacticalSurface
+                ),
+                border = BorderStroke(
+                    width = if (smartModeEnabled) 2.dp else 1.dp,
+                    color = if (smartModeEnabled) SecureGreen else DividerSubtle
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Smart Mode",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Automatically choose the best transport: WiFi Direct → Internet → Bluetooth",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = smartModeEnabled,
+                            onCheckedChange = { viewModel.setSmartModeEnabled(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnSecureGreen,
+                                checkedTrackColor = SecureGreen,
+                                uncheckedThumbColor = TextSecondary,
+                                uncheckedTrackColor = TacticalElevated,
+                                uncheckedBorderColor = DividerMedium
+                            )
+                        )
+                    }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    // Prefer TOR option – only visible when Smart Mode is on
+                    AnimatedVisibility(visible = smartModeEnabled) {
+                        Column {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Divider(color = DividerSubtle)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Prefer TOR",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Route internet traffic via TOR. Slower but hides your IP.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = preferTor,
+                                    onCheckedChange = { viewModel.setPreferTor(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = OnSecureGreen,
+                                        checkedTrackColor = SecureGreen,
+                                        uncheckedThumbColor = TextSecondary,
+                                        uncheckedTrackColor = TacticalElevated,
+                                        uncheckedBorderColor = DividerMedium
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
-            ConnectionModeCard(
-                title = "TOR Relay",
-                description = "Routes through TOR network for IP privacy. Requires Orbot.",
-                selected = connectionMode == ConnectionMode.TOR_RELAY,
-                onClick = { viewModel.setConnectionMode(ConnectionMode.TOR_RELAY) }
-            )
+            // Manual transport selection – only visible when Smart Mode is off
+            AnimatedVisibility(visible = !smartModeEnabled) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Manual Transport",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
 
-            ConnectionModeCard(
-                title = "P2P Only",
-                description = "Bluetooth mesh only. No internet required.",
-                selected = connectionMode == ConnectionMode.P2P_ONLY,
-                enabled = meshEnabled,
-                onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_ONLY) }
-            )
+                    Spacer(modifier = Modifier.height(6.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    ConnectionModeCard(
+                        title = "Direct",
+                        description = "Fast connection directly to relay server. Best performance.",
+                        selected = connectionMode == ConnectionMode.DIRECT,
+                        onClick = { viewModel.setConnectionMode(ConnectionMode.DIRECT) }
+                    )
 
-            ConnectionModeCard(
-                title = "P2P Tor",
-                description = "Direct messaging via .onion addresses. No relay server needed.",
-                selected = connectionMode == ConnectionMode.P2P_TOR,
-                onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_TOR) }
-            )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ConnectionModeCard(
+                        title = "TOR Relay",
+                        description = "Routes through TOR network for IP privacy. Requires Orbot.",
+                        selected = connectionMode == ConnectionMode.TOR_RELAY,
+                        onClick = { viewModel.setConnectionMode(ConnectionMode.TOR_RELAY) }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ConnectionModeCard(
+                        title = "P2P Only",
+                        description = "Bluetooth mesh only. No internet required.",
+                        selected = connectionMode == ConnectionMode.P2P_ONLY,
+                        enabled = meshEnabled,
+                        onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_ONLY) }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ConnectionModeCard(
+                        title = "P2P Tor",
+                        description = "Direct messaging via .onion addresses. No relay server needed.",
+                        selected = connectionMode == ConnectionMode.P2P_TOR,
+                        onClick = { viewModel.setConnectionMode(ConnectionMode.P2P_TOR) }
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

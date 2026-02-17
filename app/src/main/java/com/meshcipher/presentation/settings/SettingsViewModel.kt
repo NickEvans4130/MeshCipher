@@ -76,6 +76,20 @@ class SettingsViewModel @Inject constructor(
             initialValue = DEFAULT_RELAY_URL
         )
 
+    val smartModeEnabled: StateFlow<Boolean> = appPreferences.smartModeEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
+        )
+
+    val preferTor: StateFlow<Boolean> = appPreferences.preferTor
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     private val _hasBluetoothPermissions = MutableStateFlow(false)
     val hasBluetoothPermissions: StateFlow<Boolean> = _hasBluetoothPermissions.asStateFlow()
 
@@ -148,6 +162,18 @@ class SettingsViewModel @Inject constructor(
     fun resetRelayServerUrl() {
         viewModelScope.launch {
             appPreferences.setRelayServerUrl(DEFAULT_RELAY_URL)
+        }
+    }
+
+    fun setSmartModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            appPreferences.setSmartModeEnabled(enabled)
+        }
+    }
+
+    fun setPreferTor(enabled: Boolean) {
+        viewModelScope.launch {
+            appPreferences.setPreferTor(enabled)
         }
     }
 }

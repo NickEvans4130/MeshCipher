@@ -49,6 +49,7 @@ fun ChatScreen(
     val mediaSendingProgress by viewModel.mediaSendingProgress.collectAsState()
     val isRecordingVoice by viewModel.voiceRecorder.isRecording.collectAsState()
     val recordingDuration by viewModel.voiceRecorder.recordingDurationMs.collectAsState()
+    val activeTransportLabel by viewModel.activeTransportLabel.collectAsState()
 
     val context = LocalContext.current
     val listState = rememberLazyListState()
@@ -130,7 +131,7 @@ fun ChatScreen(
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
                                 Icons.Default.Lock,
@@ -144,6 +145,19 @@ fun ChatScreen(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 10.sp,
                                 color = TextTertiary
+                            )
+                            Text(
+                                text = "·",
+                                fontFamily = RobotoMonoFontFamily,
+                                fontSize = 10.sp,
+                                color = TextTertiary
+                            )
+                            Text(
+                                text = activeTransportLabel,
+                                fontFamily = RobotoMonoFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 10.sp,
+                                color = SecureGreen
                             )
                         }
                     }
