@@ -35,6 +35,8 @@ class AppPreferences @Inject constructor(
         val HAS_SEEN_GUIDE = booleanPreferencesKey("has_seen_guide")
         val HAS_COMPLETED_PERMISSIONS = booleanPreferencesKey("has_completed_permissions")
         val RELAY_SERVER_URL = stringPreferencesKey("relay_server_url")
+        val SMART_MODE_ENABLED = booleanPreferencesKey("smart_mode_enabled")
+        val PREFER_TOR = booleanPreferencesKey("prefer_tor")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -134,6 +136,26 @@ class AppPreferences @Inject constructor(
     suspend fun setRelayServerUrl(url: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.RELAY_SERVER_URL] = url
+        }
+    }
+
+    val smartModeEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SMART_MODE_ENABLED] ?: true
+    }
+
+    suspend fun setSmartModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SMART_MODE_ENABLED] = enabled
+        }
+    }
+
+    val preferTor: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PREFER_TOR] ?: false
+    }
+
+    suspend fun setPreferTor(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PREFER_TOR] = enabled
         }
     }
 }

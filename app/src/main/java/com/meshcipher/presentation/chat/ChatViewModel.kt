@@ -18,6 +18,7 @@ import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.relay.WebSocketManager
 import com.meshcipher.data.relay.WebSocketState
+import com.meshcipher.data.transport.SmartModeManager
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.model.Conversation
 import com.meshcipher.domain.model.MediaAttachment
@@ -63,7 +64,8 @@ class ChatViewModel @Inject constructor(
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
     val voiceRecorder: VoiceRecorder,
-    val voicePlayer: VoicePlayer
+    val voicePlayer: VoicePlayer,
+    private val smartModeManager: SmartModeManager
 ) : ViewModel() {
 
     private val conversationId: String = savedStateHandle.get<String>("conversationId")
@@ -110,6 +112,15 @@ class ChatViewModel @Inject constructor(
 
     private val _mediaSendingProgress = MutableStateFlow<Float?>(null)
     val mediaSendingProgress = _mediaSendingProgress.asStateFlow()
+
+    /** Human-readable label for the transport currently being used (e.g. "WiFi Direct"). */
+    val activeTransportLabel: StateFlow<String> = smartModeManager.activeTransport
+        .map { smartModeManager.getDisplayLabel(it) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = smartModeManager.getDisplayLabel(SmartModeManager.ActiveTransport.NONE)
+        )
 
     init {
         // Mark conversation as read when chat is opened

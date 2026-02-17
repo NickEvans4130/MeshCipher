@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val TAG = "TransportManager"
+
 @Singleton
 class TransportManager @Inject constructor(
     private val directTransport: InternetTransport,
@@ -31,11 +33,15 @@ class TransportManager @Inject constructor(
     private val bluetoothMeshTransport: BluetoothMeshTransport,
     private val wifiDirectTransport: WifiDirectTransport,
     private val p2pTransport: P2PTransport,
-    private val dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
+    private val dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
+    private val smartModeManager: SmartModeManager
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val currentMode = AtomicReference(ConnectionMode.DIRECT)
+
+    @Volatile private var smartModeEnabled = true
+    @Volatile private var preferTor = false
 
     @Volatile
     private var torTransport: InternetTransport? = null
@@ -55,6 +61,18 @@ class TransportManager @Inject constructor(
                     Timber.d("Connection mode changed to: %s", mode)
                 }
         }
+        scope.launch {
+            appPreferences.smartModeEnabled.collect { enabled ->
+                smartModeEnabled = enabled
+                Timber.d("Smart Mode: %s", if (enabled) "enabled" else "disabled")
+            }
+        }
+        scope.launch {
+            appPreferences.preferTor.collect { pref ->
+                preferTor = pref
+                Timber.d("Prefer TOR: %s", pref)
+            }
+        }
     }
 
     fun getActiveTransport(): InternetTransport {
@@ -65,6 +83,8 @@ class TransportManager @Inject constructor(
     }
 
     fun getConnectionMode(): ConnectionMode = currentMode.get()
+
+    fun getSmartModeManager(): SmartModeManager = smartModeManager
 
     fun getBluetoothMeshTransport(): BluetoothMeshTransport = bluetoothMeshTransport
 
@@ -84,32 +104,58 @@ class TransportManager @Inject constructor(
         encryptedContent: ByteArray,
         contentType: Int = 0
     ): Result<String> {
-        val mode = currentMode.get()
+        // Compute effective ConnectionMode: Smart Mode overrides manual selection.
+        //   - Smart Mode OFF → use stored ConnectionMode as-is.
+        //   - Smart Mode ON + preferTor → effective DIRECT mode, but use TOR transport
+        //     for the internet leg (handled by getEffectiveInternetTransport).
+        //   - Smart Mode ON + !preferTor → effective DIRECT mode (speed-first fallback).
+        val storedMode = currentMode.get()
+        val effectiveMode = if (smartModeEnabled) {
+            // Smart Mode only overrides DIRECT/TOR_RELAY; P2P_TOR and P2P_ONLY are always explicit.
+            when (storedMode) {
+                ConnectionMode.P2P_TOR, ConnectionMode.P2P_ONLY -> storedMode
+                else -> ConnectionMode.DIRECT
+            }
+        } else {
+            storedMode
+        }
 
-        // P2P_TOR: Try P2P Tor first, then WiFi Direct, then Bluetooth mesh
-        if (mode == ConnectionMode.P2P_TOR) {
+        Timber.d(
+            "$TAG: send to %s | stored=%s effective=%s smart=%b preferTor=%b",
+            recipientId, storedMode, effectiveMode, smartModeEnabled, preferTor
+        )
+
+        // ── P2P_TOR: P2P Tor → WiFi Direct → Bluetooth ──────────────────────
+        if (effectiveMode == ConnectionMode.P2P_TOR) {
             if (p2pTransport.isAvailable()) {
                 val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
                 if (p2pResult.isSuccess) {
-                    Timber.d("Sent via P2P Tor to %s", recipientId)
+                    Timber.d("$TAG: sent via P2P Tor")
+                    smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.P2P_TOR)
                     return p2pResult
                 }
                 val p2pError = p2pResult.exceptionOrNull()?.message ?: "P2P send failed"
-                Timber.d("P2P Tor failed: %s, trying WiFi Direct", p2pError)
-                // If no other transports available, return the actual P2P error
+                Timber.d("$TAG: P2P Tor failed: %s, trying WiFi Direct", p2pError)
                 if (!wifiDirectTransport.isAvailable() && !bluetoothMeshTransport.isAvailable()) {
                     return p2pResult
                 }
             } else {
-                Timber.d("P2P Tor not available (state: not running)")
+                Timber.d("$TAG: P2P Tor not available")
             }
             if (wifiDirectTransport.isAvailable()) {
                 val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
-                if (wifiResult.isSuccess) return wifiResult
-                Timber.d("WiFi Direct failed, trying Bluetooth mesh")
+                if (wifiResult.isSuccess) {
+                    smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
+                    return wifiResult
+                }
+                Timber.d("$TAG: WiFi Direct failed, trying Bluetooth mesh")
             }
             if (bluetoothMeshTransport.isAvailable()) {
-                return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+                val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+                if (btResult.isSuccess) {
+                    smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
+                }
+                return btResult
             }
             return Result.failure(Exception(
                 if (p2pTransport.isAvailable()) "P2P Tor send failed"
@@ -117,56 +163,83 @@ class TransportManager @Inject constructor(
             ))
         }
 
-        // P2P_ONLY: Try WiFi Direct first (better range/bandwidth), then Bluetooth mesh
-        if (mode == ConnectionMode.P2P_ONLY) {
+        // ── P2P_ONLY: WiFi Direct → Bluetooth ───────────────────────────────
+        if (effectiveMode == ConnectionMode.P2P_ONLY) {
             if (wifiDirectTransport.isAvailable()) {
                 val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
-                if (wifiResult.isSuccess) return wifiResult
-                Timber.d("WiFi Direct failed, trying Bluetooth mesh")
+                if (wifiResult.isSuccess) {
+                    smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
+                    return wifiResult
+                }
+                Timber.d("$TAG: WiFi Direct failed, trying Bluetooth mesh")
             }
-            return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            if (btResult.isSuccess) {
+                smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
+            }
+            return btResult
         }
 
-        // Try P2P Tor first if available and recipient is reachable
+        // ── DIRECT / TOR_RELAY / Smart Mode: P2P Tor → WiFi Direct → Internet → Bluetooth ──
         if (p2pTransport.isAvailable() && p2pTransport.isRecipientReachable(recipientId)) {
             val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
             if (p2pResult.isSuccess) {
-                Timber.d("Sent via P2P Tor to %s", recipientId)
+                Timber.d("$TAG: sent via P2P Tor (opportunistic)")
+                smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.P2P_TOR)
                 return p2pResult
             }
-            Timber.d("P2P Tor send failed, trying WiFi Direct")
+            Timber.d("$TAG: opportunistic P2P Tor failed, continuing")
         }
 
-        // Try WiFi Direct when available
         if (wifiDirectTransport.isAvailable()) {
             val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
             if (wifiResult.isSuccess) {
-                Timber.d("Sent via WiFi Direct to %s", recipientId)
+                Timber.d("$TAG: sent via WiFi Direct")
+                smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
                 return wifiResult
             }
-            Timber.d("WiFi Direct send failed, trying internet transport")
+            Timber.d("$TAG: WiFi Direct failed, trying internet")
         }
 
-        // Try internet transport
-        val transport = getActiveTransport()
+        // Internet transport: in Smart Mode use TOR if preferTor is on; otherwise use
+        // whichever transport the stored mode dictates.
+        val internetTransport = getEffectiveInternetTransport()
         val internetResult = try {
-            transport.sendMessage(senderId, recipientId, encryptedContent, contentType)
+            internetTransport.sendMessage(senderId, recipientId, encryptedContent, contentType)
         } catch (e: Exception) {
-            Timber.w(e, "Internet transport failed, trying offline fallback")
+            Timber.w(e, "$TAG: internet transport failed")
             Result.failure(e)
         }
 
         if (internetResult.isSuccess) {
+            val usedTor = smartModeEnabled && preferTor || storedMode == ConnectionMode.TOR_RELAY
+            smartModeManager.reportTransportUsed(
+                if (usedTor) SmartModeManager.ActiveTransport.TOR_RELAY
+                else SmartModeManager.ActiveTransport.INTERNET
+            )
             return internetResult
         }
 
-        // Final fallback to Bluetooth mesh
         if (bluetoothMeshTransport.isAvailable()) {
-            Timber.d("Falling back to Bluetooth mesh for %s", recipientId)
-            return bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            Timber.d("$TAG: falling back to Bluetooth mesh")
+            val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            if (btResult.isSuccess) {
+                smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
+            }
+            return btResult
         }
 
         return internetResult
+    }
+
+    /**
+     * Returns the internet-layer transport to use.
+     * In Smart Mode with [preferTor] ON, or when the stored mode is [ConnectionMode.TOR_RELAY],
+     * this returns the TOR-proxied transport; otherwise the direct transport.
+     */
+    private fun getEffectiveInternetTransport(): InternetTransport {
+        val useTor = (smartModeEnabled && preferTor) || currentMode.get() == ConnectionMode.TOR_RELAY
+        return if (useTor) getOrCreateTorTransport() else directTransport
     }
 
     private fun getOrCreateTorTransport(): InternetTransport {
