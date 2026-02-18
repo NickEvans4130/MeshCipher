@@ -849,7 +849,8 @@ def admin_delete_device(device_id):
 def admin_messages():
     page = request.args.get("page", 1, type=int)
     per_page = 50
-    show = request.args.get("show", "queued")
+    show_raw = request.args.get("show", "queued")
+    show = show_raw if show_raw in ("queued", "delivered", "all") else "queued"
 
     if show == "all":
         query = QueuedMessage.query
@@ -1003,4 +1004,4 @@ def set_security_headers(response):
 if __name__ == "__main__":
     # Development only. In production, use gunicorn:
     # gunicorn -w 4 -b 0.0.0.0:5000 server:app
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)
