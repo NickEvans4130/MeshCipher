@@ -32,4 +32,7 @@ sealed class Screen(val route: String) {
     object WifiDirect : Screen("wifi_direct")
     object P2PTor : Screen("p2p_tor")
     object Guide : Screen("guide")
+    object VerifySafetyNumber : Screen("verify/{contactId}") {
+        fun createRoute(contactId: String) = "verify/$contactId"
+    }
 }
