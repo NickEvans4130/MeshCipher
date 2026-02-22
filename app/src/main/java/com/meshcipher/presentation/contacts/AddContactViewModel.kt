@@ -10,7 +10,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import org.signal.libsignal.protocol.SignalProtocolAddress
 import java.util.UUID
 import javax.inject.Inject
 
@@ -64,10 +63,6 @@ class AddContactViewModel @Inject constructor(
                     displayName = _name.value,
                     publicKey = publicKey,
                     identityKey = publicKey,
-                    signalProtocolAddress = SignalProtocolAddress(
-                        _identifier.value,
-                        1
-                    ),
                     lastSeen = System.currentTimeMillis(),
                     onionAddress = scannedOnionAddress
                 )

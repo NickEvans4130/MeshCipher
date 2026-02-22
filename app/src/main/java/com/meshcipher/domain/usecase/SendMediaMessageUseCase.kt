@@ -60,7 +60,7 @@ class SendMediaMessageUseCase @Inject constructor(
 
         val sendResult = transportManager.sendWithFallback(
             senderId = senderId,
-            recipientId = contact.signalProtocolAddress.name,
+            recipientId = contact.id,
             encryptedContent = envelopeBytes,
             contentType = 1
         )

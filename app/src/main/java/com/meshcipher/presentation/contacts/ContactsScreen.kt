@@ -169,7 +169,7 @@ fun ContactItem(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = contact.signalProtocolAddress.name,
+                text = contact.id,
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMono,
                 fontFamily = RobotoMonoFontFamily

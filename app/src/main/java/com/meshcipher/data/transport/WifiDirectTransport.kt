@@ -203,7 +203,6 @@ class WifiDirectTransport @Inject constructor(
 
             val contacts = contactRepository.getAllContacts().first()
             val senderContact = contacts.find { contact ->
-                contact.signalProtocolAddress.name == pending.metadata.senderId ||
                 contact.id == pending.metadata.senderId
             }
 
@@ -243,7 +242,6 @@ class WifiDirectTransport @Inject constructor(
             // Find the sender contact by their user ID
             val contacts = contactRepository.getAllContacts().first()
             val senderContact = contacts.find { contact ->
-                contact.signalProtocolAddress.name == wifiDirectMessage.senderId ||
                 contact.id == wifiDirectMessage.senderId
             }
 

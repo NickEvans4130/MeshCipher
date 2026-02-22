@@ -89,7 +89,6 @@ class P2PTransport @Inject constructor(
 
             val contacts = contactRepository.getAllContacts().first()
             val senderContact = contacts.find { contact ->
-                contact.signalProtocolAddress.name == p2pMessage.senderId ||
                 contact.id == p2pMessage.senderId
             }
 
@@ -129,7 +128,6 @@ class P2PTransport @Inject constructor(
 
             val contacts = contactRepository.getAllContacts().first()
             val senderContact = contacts.find { contact ->
-                contact.signalProtocolAddress.name == p2pMessage.senderId ||
                 contact.id == p2pMessage.senderId
             }
 
@@ -200,7 +198,7 @@ class P2PTransport @Inject constructor(
             ?: return Result.failure(Exception("No identity available"))
 
         val contacts = contactRepository.getAllContacts().first()
-        val recipient = contacts.find { it.id == recipientUserId || it.signalProtocolAddress.name == recipientUserId }
+        val recipient = contacts.find { it.id == recipientUserId }
         if (recipient == null) {
             Timber.w("Recipient not found for ID: %s (contacts: %d)", recipientUserId, contacts.size)
             return Result.failure(Exception("Recipient contact not found: $recipientUserId"))

@@ -6,7 +6,6 @@ import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.repository.ContactRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import org.signal.libsignal.protocol.SignalProtocolAddress
 import javax.inject.Inject
 
 class ContactRepositoryImpl @Inject constructor(
@@ -45,7 +44,6 @@ class ContactRepositoryImpl @Inject constructor(
             displayName = displayName,
             publicKey = publicKey,
             identityKey = identityKey,
-            signalProtocolAddress = SignalProtocolAddress(signalProtocolAddress, 1),
             lastSeen = lastSeen,
             onionAddress = onionAddress,
             currentSafetyNumber = currentSafetyNumber,
@@ -61,7 +59,7 @@ class ContactRepositoryImpl @Inject constructor(
             displayName = displayName,
             publicKey = publicKey,
             identityKey = identityKey,
-            signalProtocolAddress = signalProtocolAddress.name,
+            signalProtocolAddress = id,
             lastSeen = lastSeen,
             onionAddress = onionAddress,
             currentSafetyNumber = currentSafetyNumber,

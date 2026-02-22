@@ -17,7 +17,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import org.signal.libsignal.protocol.SignalProtocolAddress
 
 class P2PTransportTest {
 
@@ -125,7 +124,7 @@ class P2PTransportTest {
             displayName = "Test",
             publicKey = ByteArray(32),
             identityKey = ByteArray(32),
-            signalProtocolAddress = SignalProtocolAddress("user-123", 1),
+
             onionAddress = null
         )
         coEvery { contactRepository.getAllContacts() } returns flowOf(listOf(contact))
@@ -148,7 +147,7 @@ class P2PTransportTest {
             displayName = "Test",
             publicKey = ByteArray(32),
             identityKey = ByteArray(32),
-            signalProtocolAddress = SignalProtocolAddress("user-123", 1),
+
             onionAddress = "abc123.onion"
         )
         coEvery { contactRepository.getAllContacts() } returns flowOf(listOf(contact))
@@ -171,7 +170,7 @@ class P2PTransportTest {
             displayName = "Test",
             publicKey = ByteArray(32),
             identityKey = ByteArray(32),
-            signalProtocolAddress = SignalProtocolAddress("user-123", 1),
+
             onionAddress = "abc123.onion"
         )
         coEvery { contactRepository.getAllContacts() } returns flowOf(listOf(contact))

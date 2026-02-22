@@ -45,7 +45,7 @@ class SendMessageUseCase @Inject constructor(
         // will be integrated once key exchange is implemented in a later phase.
         val sendResult = transportManager.sendWithFallback(
             senderId = senderId,
-            recipientId = contact.signalProtocolAddress.name,
+            recipientId = contact.id,
             encryptedContent = content.toByteArray()
         )
 
