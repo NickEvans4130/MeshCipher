@@ -37,7 +37,8 @@ object DatabaseModule {
             .addMigrations(
                 MeshCipherDatabase.MIGRATION_1_3,
                 MeshCipherDatabase.MIGRATION_2_3,
-                MeshCipherDatabase.MIGRATION_3_4
+                MeshCipherDatabase.MIGRATION_3_4,
+                MeshCipherDatabase.MIGRATION_4_5
             )
             .build()
     }
