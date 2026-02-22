@@ -117,7 +117,7 @@ fun MeshCipherNavigation(
             AddContactScreen(
                 onBackClick = { navController.popBackStack() },
                 onContactAdded = {
-                    navController.popBackStack(Screen.Settings.route, false)
+                    navController.popBackStack()
                 }
             )
         }

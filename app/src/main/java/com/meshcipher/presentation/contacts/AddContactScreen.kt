@@ -8,8 +8,10 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -27,10 +29,21 @@ fun AddContactScreen(
     val name by viewModel.name.collectAsState()
     val identifier by viewModel.identifier.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val contactAdded by viewModel.contactAdded.collectAsState()
     val isFromQRScan = viewModel.isFromQRScan
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(contactAdded) {
+        if (contactAdded) {
+            snackbarHostState.showSnackbar("Contact added successfully")
+            onContactAdded()
+        }
+    }
 
     Scaffold(
         containerColor = TacticalBackground,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -171,7 +184,7 @@ fun AddContactScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
-                onClick = { viewModel.addContact(onContactAdded) },
+                onClick = { viewModel.addContact() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading && name.isNotBlank() && identifier.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(

@@ -35,6 +35,9 @@ class AddContactViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
+    private val _contactAdded = MutableStateFlow(false)
+    val contactAdded = _contactAdded.asStateFlow()
+
     fun updateName(value: String) {
         _name.value = value
     }
@@ -43,7 +46,7 @@ class AddContactViewModel @Inject constructor(
         _identifier.value = value
     }
 
-    fun addContact(onSuccess: () -> Unit) {
+    fun addContact() {
         if (_name.value.isBlank() || _identifier.value.isBlank()) return
 
         viewModelScope.launch {
@@ -70,7 +73,7 @@ class AddContactViewModel @Inject constructor(
                 )
 
                 contactRepository.insertContact(contact)
-                onSuccess()
+                _contactAdded.value = true
             } finally {
                 _isLoading.value = false
             }
