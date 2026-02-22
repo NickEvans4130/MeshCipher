@@ -18,6 +18,7 @@ import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
 import com.meshcipher.presentation.guide.GuideScreen
 import com.meshcipher.presentation.p2ptor.P2PTorScreen
+import com.meshcipher.presentation.verify.VerifySafetyNumberScreen
 import com.meshcipher.presentation.wifidirect.WifiDirectScreen
 
 @Composable
@@ -49,7 +50,10 @@ fun MeshCipherNavigation(
             )
         ) {
             ChatScreen(
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                onNavigateToVerify = { contactId ->
+                    navController.navigate(Screen.VerifySafetyNumber.createRoute(contactId))
+                }
             )
         }
 
@@ -85,6 +89,9 @@ fun MeshCipherNavigation(
                 },
                 onContactDeleted = {
                     navController.popBackStack()
+                },
+                onNavigateToVerify = { contactId ->
+                    navController.navigate(Screen.VerifySafetyNumber.createRoute(contactId))
                 }
             )
         }
@@ -193,6 +200,17 @@ fun MeshCipherNavigation(
         composable(Screen.Guide.route) {
             GuideScreen(
                 onFinish = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.VerifySafetyNumber.route,
+            arguments = listOf(
+                navArgument("contactId") { type = NavType.StringType }
+            )
+        ) {
+            VerifySafetyNumberScreen(
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

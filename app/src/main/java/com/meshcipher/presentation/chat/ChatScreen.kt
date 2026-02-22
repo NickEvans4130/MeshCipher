@@ -39,6 +39,7 @@ import java.util.*
 @Composable
 fun ChatScreen(
     onBackClick: () -> Unit,
+    onNavigateToVerify: (contactId: String) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -211,24 +212,34 @@ fun ChatScreen(
         },
         containerColor = TacticalBackground
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 8.dp),
-            state = listState,
-            reverseLayout = true
         ) {
-            items(messages) { message ->
-                MessageBubble(
-                    message = message,
-                    viewModel = viewModel,
-                    onMediaClick = { path, isVideo ->
-                        viewingMediaPath = path
-                        viewingMediaIsVideo = isVideo
-                    }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+            contact?.let { c ->
+                if (c.safetyNumberChanged()) {
+                    SafetyNumberWarningBanner(onClick = { onNavigateToVerify(c.id) })
+                }
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                state = listState,
+                reverseLayout = true
+            ) {
+                items(messages) { message ->
+                    MessageBubble(
+                        message = message,
+                        viewModel = viewModel,
+                        onMediaClick = { path, isVideo ->
+                            viewingMediaPath = path
+                            viewingMediaIsVideo = isVideo
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
         }
     }
@@ -252,6 +263,41 @@ fun ChatScreen(
                 videoPickerLauncher.launch("video/*")
             }
         )
+    }
+}
+
+@Composable
+private fun SafetyNumberWarningBanner(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = StatusError.copy(alpha = 0.12f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = StatusError,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                "Safety number changed — tap to verify",
+                style = MaterialTheme.typography.bodySmall,
+                color = StatusError,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = StatusError,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }
 

@@ -8,7 +8,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -31,6 +33,7 @@ fun ContactDetailScreen(
     onBackClick: () -> Unit,
     onStartConversation: (String) -> Unit,
     onContactDeleted: () -> Unit,
+    onNavigateToVerify: (contactId: String) -> Unit = {},
     viewModel: ContactDetailViewModel = hiltViewModel()
 ) {
     val contact by viewModel.contact.collectAsState()
@@ -384,6 +387,31 @@ fun ContactDetailScreen(
                                 }
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Safety number verification
+                    val safetyNumberChanged = contact?.safetyNumberChanged() == true
+                    OutlinedButton(
+                        onClick = { contact?.let { onNavigateToVerify(it.id) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (safetyNumberChanged) StatusError else SecureGreen
+                        ),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(
+                                if (safetyNumberChanged) StatusError.copy(alpha = 0.5f) else SecureGreen.copy(alpha = 0.5f)
+                            )
+                        )
+                    ) {
+                        Icon(
+                            if (safetyNumberChanged) Icons.Default.Warning else Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (safetyNumberChanged) "Safety Number Changed" else "Verify Safety Number")
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
