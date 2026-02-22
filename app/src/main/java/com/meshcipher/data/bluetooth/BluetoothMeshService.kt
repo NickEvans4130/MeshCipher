@@ -174,7 +174,6 @@ class BluetoothMeshService : Service() {
             // Find the sender contact by their user ID
             val contacts = contactRepository.getAllContacts().first()
             val senderContact = contacts.find { contact ->
-                contact.signalProtocolAddress.name == meshMessage.originUserId ||
                 contact.id == meshMessage.originUserId
             }
 

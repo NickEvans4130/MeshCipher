@@ -46,13 +46,13 @@ class SignalProtocolManager @Inject constructor(
     ) {
         val sessionBuilder = SessionBuilder(
             signalProtocolStore,
-            contact.signalProtocolAddress
+            SignalProtocolAddress(contact.id, 1)
         )
         sessionBuilder.process(preKeyBundle)
     }
 
     fun getSafetyNumber(contact: com.meshcipher.domain.model.Contact): String {
-        val identityKey = signalProtocolStore.getIdentity(contact.signalProtocolAddress)
+        val identityKey = signalProtocolStore.getIdentity(SignalProtocolAddress(contact.id, 1))
         val myIdentityKey = signalProtocolStore.identityKeyPair
 
         if (identityKey == null) {

@@ -94,7 +94,7 @@ class ReceiveMessageUseCase @Inject constructor(
         // Find the contact by their signal protocol address name
         val contacts = contactRepository.getAllContacts().first()
         val senderContact = contacts.find {
-            it.signalProtocolAddress.name == queued.senderId
+            it.id == queued.senderId
         }
 
         if (senderContact == null) {
@@ -131,7 +131,7 @@ class ReceiveMessageUseCase @Inject constructor(
 
         val contacts = contactRepository.getAllContacts().first()
         val senderContact = contacts.find {
-            it.signalProtocolAddress.name == queued.senderId
+            it.id == queued.senderId
         }
 
         if (senderContact == null) {
