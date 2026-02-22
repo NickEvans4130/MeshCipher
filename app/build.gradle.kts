@@ -96,6 +96,9 @@ android {
 }
 
 dependencies {
+    // Shared KMM module
+    implementation(project(":shared"))
+
     // Core library desugaring (required by libsignal-android)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
