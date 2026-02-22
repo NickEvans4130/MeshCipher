@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import html
 import os
 import time
 import uuid
@@ -874,17 +875,21 @@ def admin_messages():
         delivered_at = m.delivered_at.strftime("%Y-%m-%d %H:%M") if m.delivered_at else "-"
         status_badge = '<span class="badge badge-green">DELIVERED</span>' if m.delivered else '<span class="badge badge-yellow">QUEUED</span>'
         ct = "TEXT" if m.content_type == 0 else "MEDIA"
-        content_preview = m.encrypted_content[:32] + "..." if len(m.encrypted_content) > 32 else m.encrypted_content
+        raw_preview = m.encrypted_content[:32] + "..." if len(m.encrypted_content) > 32 else m.encrypted_content
+        msg_id = html.escape(m.id)
+        sender_id = html.escape(m.sender_id)
+        recipient_id = html.escape(m.recipient_id)
+        content_preview = html.escape(raw_preview)
         rows += f"""<tr>
-            <td class="mono">{m.id[:8]}...</td>
-            <td class="mono" title="{m.sender_id}">{m.sender_id[:16]}...</td>
-            <td class="mono" title="{m.recipient_id}">{m.recipient_id[:16]}...</td>
+            <td class="mono">{msg_id[:8]}...</td>
+            <td class="mono" title="{sender_id}">{sender_id[:16]}...</td>
+            <td class="mono" title="{recipient_id}">{recipient_id[:16]}...</td>
             <td><span class="badge {'badge-green' if m.content_type == 0 else 'badge-yellow'}">{ct}</span></td>
             <td>{status_badge}</td>
             <td>{queued}</td>
             <td>{delivered_at}</td>
             <td>
-                <form method="POST" action="/admin/messages/{m.id}/delete" style="display:inline;">
+                <form method="POST" action="/admin/messages/{msg_id}/delete" style="display:inline;">
                     <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this message?')">Delete</button>
                 </form>
             </td>
