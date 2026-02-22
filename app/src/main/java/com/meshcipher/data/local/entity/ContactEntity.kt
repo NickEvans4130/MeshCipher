@@ -17,5 +17,9 @@ data class ContactEntity(
     @ColumnInfo(name = "signal_protocol_address") val signalProtocolAddress: String,
     @ColumnInfo(name = "last_seen") val lastSeen: Long,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "onion_address") val onionAddress: String? = null
+    @ColumnInfo(name = "onion_address") val onionAddress: String? = null,
+    @ColumnInfo(name = "current_safety_number") val currentSafetyNumber: String? = null,
+    @ColumnInfo(name = "verified_safety_number") val verifiedSafetyNumber: String? = null,
+    @ColumnInfo(name = "safety_number_verified_at") val safetyNumberVerifiedAt: Long? = null,
+    @ColumnInfo(name = "safety_number_changed_at") val safetyNumberChangedAt: Long? = null
 )

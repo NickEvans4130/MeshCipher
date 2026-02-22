@@ -15,6 +15,7 @@ import com.meshcipher.data.transport.P2PTransport
 import com.meshcipher.data.transport.WifiDirectTransport
 import com.meshcipher.data.worker.MessageCleanupWorker
 import com.meshcipher.data.worker.MessageSyncWorker
+import com.meshcipher.domain.usecase.SafetyNumberManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,9 @@ class MeshCipherApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var mediaFileManager: MediaFileManager
 
+    @Inject
+    lateinit var safetyNumberManager: SafetyNumberManager
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -70,6 +74,7 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         initializeWifiDirect()
         initializeP2PTransport()
         setupWebSocket()
+        checkSafetyNumbers()
     }
 
     private fun initializeWifiDirect() {
@@ -163,6 +168,17 @@ class MeshCipherApplication : Application(), Configuration.Provider {
                 mediaFileManager.cleanupTempFiles()
             }
         })
+    }
+
+    private fun checkSafetyNumbers() {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                safetyNumberManager.checkAllSafetyNumbers()
+                Timber.d("Safety number check complete")
+            } catch (e: Exception) {
+                Timber.w(e, "Safety number check failed")
+            }
+        }
     }
 
     private fun setupAppLifecycleObserver() {

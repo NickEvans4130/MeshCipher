@@ -45,12 +45,13 @@ class ContactRepositoryImpl @Inject constructor(
             displayName = displayName,
             publicKey = publicKey,
             identityKey = identityKey,
-            signalProtocolAddress = SignalProtocolAddress(
-                signalProtocolAddress,
-                1
-            ),
+            signalProtocolAddress = SignalProtocolAddress(signalProtocolAddress, 1),
             lastSeen = lastSeen,
-            onionAddress = onionAddress
+            onionAddress = onionAddress,
+            currentSafetyNumber = currentSafetyNumber,
+            verifiedSafetyNumber = verifiedSafetyNumber,
+            safetyNumberVerifiedAt = safetyNumberVerifiedAt,
+            safetyNumberChangedAt = safetyNumberChangedAt
         )
     }
 
@@ -62,7 +63,11 @@ class ContactRepositoryImpl @Inject constructor(
             identityKey = identityKey,
             signalProtocolAddress = signalProtocolAddress.name,
             lastSeen = lastSeen,
-            onionAddress = onionAddress
+            onionAddress = onionAddress,
+            currentSafetyNumber = currentSafetyNumber,
+            verifiedSafetyNumber = verifiedSafetyNumber,
+            safetyNumberVerifiedAt = safetyNumberVerifiedAt,
+            safetyNumberChangedAt = safetyNumberChangedAt
         )
     }
 }

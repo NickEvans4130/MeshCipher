@@ -15,7 +15,7 @@ import com.meshcipher.data.local.entity.MessageEntity
         ContactEntity::class,
         ConversationEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -48,6 +48,16 @@ abstract class MeshCipherDatabase : RoomDatabase() {
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE contacts ADD COLUMN onion_address TEXT")
+            }
+        }
+
+        // Migration from version 4 to version 5 (add safety number tracking to contacts)
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contacts ADD COLUMN current_safety_number TEXT")
+                db.execSQL("ALTER TABLE contacts ADD COLUMN verified_safety_number TEXT")
+                db.execSQL("ALTER TABLE contacts ADD COLUMN safety_number_verified_at INTEGER")
+                db.execSQL("ALTER TABLE contacts ADD COLUMN safety_number_changed_at INTEGER")
             }
         }
     }
