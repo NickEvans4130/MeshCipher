@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data Extraction Rules (Android 12+, dataExtractionRules).
+  Controls both cloud backup and device-to-device transfer.
+
+  We include only the AppPreferences DataStore (userId, display name).
+  Everything else is excluded to protect encrypted message history and Signal state.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore/app_preferences.preferences_pb" />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- No data transfer on device migration; user sets up fresh -->
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

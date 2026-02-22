@@ -47,6 +47,10 @@ class MainActivity : ComponentActivity() {
                         hasCompletedPermissions = appPreferences.hasCompletedPermissions.first()
                         hasSeenGuide = appPreferences.hasSeenGuide.first()
                         hasIdentity = identityManager.hasIdentity()
+                        // hasIdentity() returns true whenever AppPreferences holds a userId,
+                        // including after a reinstall where Auto Backup restored it.
+                        // getIdentity() will silently reconstruct EncryptedSharedPreferences
+                        // + Keystore key on the first call if needed (recoverIdentity path).
                     }
 
                     when (hasIdentity) {
