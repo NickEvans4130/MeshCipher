@@ -274,7 +274,7 @@ fun ContactDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = contact?.signalProtocolAddress?.name ?: "",
+                                text = contact?.id ?: "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontFamily = RobotoMonoFontFamily,
                                 fontWeight = FontWeight.Medium,

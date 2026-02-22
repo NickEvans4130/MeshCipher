@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import org.signal.libsignal.protocol.SignalProtocolAddress
 import javax.inject.Inject
 
 @HiltViewModel
@@ -60,7 +59,7 @@ class ContactDetailViewModel @Inject constructor(
             contact.collect { c ->
                 if (c != null && !_isEditing.value) {
                     _editName.value = c.displayName
-                    _editUserId.value = c.signalProtocolAddress.name
+                    _editUserId.value = c.id
                 }
             }
         }
@@ -86,7 +85,7 @@ class ContactDetailViewModel @Inject constructor(
     fun startEditing() {
         contact.value?.let { c ->
             _editName.value = c.displayName
-            _editUserId.value = c.signalProtocolAddress.name
+            _editUserId.value = c.id
             _isEditing.value = true
         }
     }
@@ -95,7 +94,7 @@ class ContactDetailViewModel @Inject constructor(
         _isEditing.value = false
         contact.value?.let { c ->
             _editName.value = c.displayName
-            _editUserId.value = c.signalProtocolAddress.name
+            _editUserId.value = c.id
         }
     }
 
@@ -115,11 +114,7 @@ class ContactDetailViewModel @Inject constructor(
             _isSaving.value = true
             try {
                 val updatedContact = currentContact.copy(
-                    displayName = _editName.value.trim(),
-                    signalProtocolAddress = SignalProtocolAddress(
-                        _editUserId.value.trim(),
-                        1
-                    )
+                    displayName = _editName.value.trim()
                 )
                 contactRepository.updateContact(updatedContact)
                 _isEditing.value = false
