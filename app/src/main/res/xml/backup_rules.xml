@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules (Android 11 and below, fullBackupContent).
+
+  We include only AppPreferences (DataStore), which holds the userId and display name.
+  This is the minimum needed to restore a user's identity after a reinstall, so their
+  contacts can still reach them.
+
+  Everything else is excluded:
+  - EncryptedSharedPreferences (identity_prefs, signal_protocol_store): Keystore master
+    keys are never backed up, so restoring the ciphertext would be useless.
+  - Room databases: contain encrypted messages and contacts. Restoring is not meaningful
+    without the SQLCipher passphrase, and for privacy reasons we don't back up message history.
+  - WorkManager internals: device-specific, should not be restored.
+-->
+<full-backup-content>
+    <!-- Include the DataStore preferences file that holds userId and display name -->
+    <include domain="file" path="datastore/app_preferences.preferences_pb" />
+
+    <!-- Exclude everything else -->
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
+</full-backup-content>
