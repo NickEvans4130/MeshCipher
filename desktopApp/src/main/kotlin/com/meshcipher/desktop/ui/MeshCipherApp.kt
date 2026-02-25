@@ -14,18 +14,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
 import com.meshcipher.desktop.data.ContactRepository
 import com.meshcipher.desktop.data.DesktopContact
 import com.meshcipher.desktop.data.DesktopMessage
-import com.meshcipher.shared.util.generateUUID
+import com.meshcipher.desktop.data.MessageRepository
+import com.meshcipher.desktop.data.MessagingManager
 import kotlinx.coroutines.launch
 
 enum class Screen { CONVERSATIONS, CHAT, LINK_DEVICE }
 
 @Composable
-fun MeshCipherApp() {
+fun MeshCipherApp(messagingManager: MessagingManager? = null) {
     MaterialTheme(
         colorScheme = darkColorScheme()
     ) {
@@ -70,6 +70,7 @@ fun MeshCipherApp() {
                         if (contact != null) {
                             ChatPane(
                                 contact = contact,
+                                messagingManager = messagingManager,
                                 onBack = { currentScreen = Screen.CONVERSATIONS }
                             )
                         } else {
@@ -142,7 +143,6 @@ private fun ContactRow(contact: DesktopContact, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar placeholder
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -170,14 +170,35 @@ private fun ContactRow(contact: DesktopContact, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChatPane(contact: DesktopContact, onBack: () -> Unit) {
+private fun ChatPane(
+    contact: DesktopContact,
+    messagingManager: MessagingManager?,
+    onBack: () -> Unit
+) {
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var inputText by remember { mutableStateOf("") }
+    var isSending by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
+    // Load history from DB
     LaunchedEffect(contact.contactId) {
-        messages = ContactRepository.getMessagesForContact(contact.contactId)
+        messages = MessageRepository.getForContact(contact.contactId)
+    }
+
+    // Listen for new incoming messages from relay
+    LaunchedEffect(contact.contactId, messagingManager) {
+        messagingManager?.newMessages
+            ?.collect { msg ->
+                if (msg.contactId == contact.contactId) {
+                    messages = messages + msg
+                }
+            }
+    }
+
+    // Auto-scroll to bottom when messages change
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -188,28 +209,33 @@ private fun ChatPane(contact: DesktopContact, onBack: () -> Unit) {
             }
         )
 
+        if (messagingManager == null) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Relay not configured — messages will not be sent or received. " +
+                        "Add relayUrl and authToken to ~/.config/meshcipher/relay.conf",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
         // Messages list
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-            reverseLayout = false
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
         ) {
             items(messages, key = { it.id }) { msg ->
                 MessageBubble(msg)
             }
         }
 
-        LaunchedEffect(messages.size) {
-            if (messages.isNotEmpty()) {
-                listState.animateScrollToItem(messages.size - 1)
-            }
-        }
-
         // Input bar
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(
@@ -217,7 +243,8 @@ private fun ChatPane(contact: DesktopContact, onBack: () -> Unit) {
                 onValueChange = { inputText = it },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Message") },
-                maxLines = 5
+                maxLines = 5,
+                enabled = !isSending
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
@@ -225,18 +252,27 @@ private fun ChatPane(contact: DesktopContact, onBack: () -> Unit) {
                     val text = inputText.trim()
                     if (text.isNotEmpty()) {
                         scope.launch {
-                            val newMsg = ContactRepository.insertMessage(
-                                messageId = generateUUID(),
-                                contactId = contact.contactId,
-                                content = text,
-                                isOutgoing = true
-                            )
-                            messages = messages + newMsg
-                            inputText = ""
+                            isSending = true
+                            val result = messagingManager?.sendMessage(text, contact.contactId)
+                            result?.onSuccess { msg ->
+                                messages = messages + msg
+                                inputText = ""
+                            }
+                            // If no messaging manager, persist locally only
+                            if (messagingManager == null) {
+                                val msg = MessageRepository.save(
+                                    contactId = contact.contactId,
+                                    content = text,
+                                    isOutgoing = true
+                                )
+                                messages = messages + msg
+                                inputText = ""
+                            }
+                            isSending = false
                         }
                     }
                 },
-                enabled = inputText.isNotBlank()
+                enabled = inputText.isNotBlank() && !isSending
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }

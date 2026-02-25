@@ -31,6 +31,13 @@ object DeviceLinksTable : LongIdTable("device_links") {
     val approved = bool("approved").default(false)
 }
 
+/** Persists ECDH / Signal Protocol session state per contact. */
+object SessionsTable : LongIdTable("sessions") {
+    val userId = varchar("user_id", 128).uniqueIndex()
+    val sessionKeyHex = varchar("session_key_hex", 64) // 32-byte AES key as hex
+    val updatedAt = long("updated_at")
+}
+
 object AppDatabase {
 
     fun init() {
@@ -42,7 +49,8 @@ object AppDatabase {
             SchemaUtils.createMissingTablesAndColumns(
                 ContactsTable,
                 MessagesTable,
-                DeviceLinksTable
+                DeviceLinksTable,
+                SessionsTable
             )
         }
     }

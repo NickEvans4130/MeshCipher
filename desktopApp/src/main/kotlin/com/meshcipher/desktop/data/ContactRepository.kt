@@ -26,6 +26,13 @@ data class DesktopMessage(
 
 object ContactRepository {
 
+    suspend fun getContact(contactId: String): DesktopContact? = withContext(Dispatchers.IO) {
+        transaction {
+            ContactsTable.select { ContactsTable.contactId eq contactId }
+                .firstOrNull()?.toDesktopContact()
+        }
+    }
+
     suspend fun getAllContacts(): List<DesktopContact> = withContext(Dispatchers.IO) {
         transaction {
             ContactsTable.selectAll()

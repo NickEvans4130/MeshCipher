@@ -1,7 +1,10 @@
 package com.meshcipher.shared.crypto
 
 import java.io.File
+import java.security.KeyFactory
+import javax.crypto.KeyAgreement
 import java.security.KeyPairGenerator
+import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -63,6 +66,26 @@ actual class KeyManager actual constructor() {
         publicKeyFile.delete()
         privateKeyFile.delete()
         wrapKeyFile.delete()
+    }
+
+    /**
+     * Perform ECDH key agreement with the remote party's public key.
+     * Returns a 32-byte shared secret (SHA-256 of the raw ECDH output).
+     *
+     * Both sides compute the same secret: ECDH(our_priv, their_pub) == ECDH(their_priv, our_pub).
+     * This is used as the AES-256-GCM session key in MessageCrypto.
+     *
+     * Note: no forward secrecy (no ephemeral keys). Full Signal Protocol X3DH
+     * is the planned upgrade for production.
+     */
+    fun performECDH(theirPublicKeyBytes: ByteArray): ByteArray {
+        val privateKey = loadPrivateKey()
+        val theirPublicKey = KeyFactory.getInstance("EC")
+            .generatePublic(X509EncodedKeySpec(theirPublicKeyBytes))
+        val ka = KeyAgreement.getInstance("ECDH")
+        ka.init(privateKey)
+        ka.doPhase(theirPublicKey, true)
+        return MessageDigest.getInstance("SHA-256").digest(ka.generateSecret())
     }
 
     // --- Helpers ---
