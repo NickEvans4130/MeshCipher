@@ -22,9 +22,9 @@ PASS=0
 FAIL=0
 SKIP=0
 
-pass()  { echo "  ✓ $1"; ((PASS++)); }
-fail()  { echo "  ✗ $1"; ((FAIL++)); }
-skip()  { echo "  - $1 (skipped)"; ((SKIP++)); }
+pass()  { echo "  ✓ $1"; ((++PASS)) || true; }
+fail()  { echo "  ✗ $1"; ((++FAIL)) || true; }
+skip()  { echo "  - $1 (skipped)"; ((++SKIP)) || true; }
 ask()   { read -rp "  $1 (y/n): " _ANS; [[ "$_ANS" == "y" ]]; }
 
 echo
