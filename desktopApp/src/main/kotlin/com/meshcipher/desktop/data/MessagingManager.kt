@@ -3,6 +3,7 @@ package com.meshcipher.desktop.data
 import com.meshcipher.desktop.crypto.MessageCrypto
 import com.meshcipher.desktop.crypto.MessageEnvelope
 import com.meshcipher.desktop.network.RelayTransport
+import com.meshcipher.desktop.platform.DesktopPlatform
 import com.meshcipher.shared.util.generateUUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -93,6 +94,12 @@ class MessagingManager(
             timestamp = envelope.timestamp
         )
         _newMessages.emit(msg)
+
+        val senderName = contact.displayName.ifBlank { senderId.take(8) }
+        DesktopPlatform.showNotification(
+            title = senderName,
+            body = plaintext.take(80).let { if (plaintext.length > 80) "$it…" else it }
+        )
     }
 
     fun dispose() = scope.cancel()

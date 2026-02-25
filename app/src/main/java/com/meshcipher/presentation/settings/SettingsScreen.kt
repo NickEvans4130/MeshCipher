@@ -62,6 +62,7 @@ fun SettingsScreen(
     onWifiDirectClick: () -> Unit = {},
     onP2PTorClick: () -> Unit = {},
     onGuideClick: () -> Unit = {},
+    onLinkedDevicesClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -983,6 +984,59 @@ fun SettingsScreen(
                         )
                         Text(
                             text = "Learn about connection modes and features",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "LINKED DEVICES",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onLinkedDevicesClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Security,
+                        contentDescription = null,
+                        tint = SecureGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Linked Devices",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Manage desktop and other linked devices",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

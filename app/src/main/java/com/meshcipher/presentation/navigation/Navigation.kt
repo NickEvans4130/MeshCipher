@@ -1,6 +1,7 @@
 package com.meshcipher.presentation.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -12,6 +13,9 @@ import com.meshcipher.presentation.contacts.AddContactScreen
 import com.meshcipher.presentation.contacts.ContactDetailScreen
 import com.meshcipher.presentation.contacts.ContactsScreen
 import com.meshcipher.presentation.conversations.ConversationsScreen
+import com.meshcipher.presentation.linking.DeviceLinkApprovalScreen
+import com.meshcipher.presentation.linking.LinkedDevicesScreen
+import com.meshcipher.presentation.linking.QRScannerScreen
 import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
 import com.meshcipher.presentation.settings.SettingsScreen
@@ -20,6 +24,8 @@ import com.meshcipher.presentation.guide.GuideScreen
 import com.meshcipher.presentation.p2ptor.P2PTorScreen
 import com.meshcipher.presentation.verify.VerifySafetyNumberScreen
 import com.meshcipher.presentation.wifidirect.WifiDirectScreen
+import com.google.gson.Gson
+import com.meshcipher.shared.domain.model.DeviceLinkRequest
 
 @Composable
 fun MeshCipherNavigation(
@@ -149,8 +155,58 @@ fun MeshCipherNavigation(
                 },
                 onGuideClick = {
                     navController.navigate(Screen.Guide.route)
+                },
+                onLinkedDevicesClick = {
+                    navController.navigate(Screen.LinkedDevices.route)
                 }
             )
+        }
+
+        composable(Screen.LinkedDevices.route) {
+            LinkedDevicesScreen(
+                onBackClick = { navController.popBackStack() },
+                onScanQrClick = { navController.navigate(Screen.ScanDeviceQr.route) }
+            )
+        }
+
+        composable(Screen.ScanDeviceQr.route) {
+            QRScannerScreen(
+                onBackClick = { navController.popBackStack() },
+                onRequestScanned = { request ->
+                    val requestJson = Gson().toJson(request)
+                    navController.navigate(Screen.DeviceLinkApproval.createRoute(requestJson)) {
+                        popUpTo(Screen.ScanDeviceQr.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Screen.DeviceLinkApproval.route,
+            arguments = listOf(
+                navArgument("requestJson") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val encoded = backStackEntry.arguments?.getString("requestJson") ?: ""
+            val requestJson = String(android.util.Base64.decode(encoded, android.util.Base64.URL_SAFE))
+            val request = runCatching {
+                Gson().fromJson(requestJson, DeviceLinkRequest::class.java)
+            }.getOrNull()
+
+            if (request != null) {
+                DeviceLinkApprovalScreen(
+                    request = request,
+                    onApproved = {
+                        navController.navigate(Screen.LinkedDevices.route) {
+                            popUpTo(Screen.Settings.route)
+                        }
+                    },
+                    onDenied = { navController.popBackStack() },
+                    onBackClick = { navController.popBackStack() }
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+            }
         }
 
         composable(Screen.MeshNetwork.route) {
