@@ -1,0 +1,20 @@
+package com.meshcipher.desktop.data
+
+import kotlinx.serialization.Serializable
+
+const val CONTENT_TYPE_MESSAGE = 0
+const val CONTENT_TYPE_DEVICE_LINK = 10
+const val CONTENT_TYPE_CONTACT_SYNC = 11
+
+@Serializable
+data class ContactSyncPayload(
+    val type: String = "contact_sync",
+    val contacts: List<ContactSyncItem>
+)
+
+@Serializable
+data class ContactSyncItem(
+    val userId: String,
+    val displayName: String,
+    val publicKeyHex: String
+)

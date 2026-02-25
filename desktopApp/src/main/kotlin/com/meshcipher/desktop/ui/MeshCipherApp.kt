@@ -2,83 +2,113 @@
 
 package com.meshcipher.desktop.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.meshcipher.desktop.data.ContactRepository
 import com.meshcipher.desktop.data.DesktopContact
 import com.meshcipher.desktop.data.DesktopMessage
 import com.meshcipher.desktop.data.MessageRepository
 import com.meshcipher.desktop.data.MessagingManager
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-enum class Screen { CONVERSATIONS, CHAT, LINK_DEVICE }
+private enum class NavItem { CONVERSATIONS, LINK_DEVICE }
 
 @Composable
 fun MeshCipherApp(messagingManager: MessagingManager? = null) {
-    MaterialTheme(
-        colorScheme = darkColorScheme()
-    ) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            var currentScreen by remember { mutableStateOf(Screen.CONVERSATIONS) }
+    MaterialTheme(colorScheme = TacticalColorScheme) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Background
+        ) {
+            var selectedNav by remember { mutableStateOf(NavItem.CONVERSATIONS) }
             var selectedContact by remember { mutableStateOf<DesktopContact?>(null) }
+            var inChat by remember { mutableStateOf(false) }
+            var contactsRefreshKey by remember { mutableStateOf(0) }
+
+            // When contacts are synced via relay, refresh the list
+            LaunchedEffect(messagingManager) {
+                messagingManager?.contactsUpdated?.collect {
+                    contactsRefreshKey++
+                    selectedNav = NavItem.CONVERSATIONS
+                }
+            }
 
             Row(modifier = Modifier.fillMaxSize()) {
-                // --- Sidebar ---
-                NavigationRail(
-                    modifier = Modifier.fillMaxHeight(),
-                    header = {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "MC",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                // ── Sidebar ──
+                TacticalSidebar(
+                    selectedNav = selectedNav,
+                    onNavSelect = { nav ->
+                        selectedNav = nav
+                        if (nav == NavItem.CONVERSATIONS) inChat = false
                     }
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    NavigationRailItem(
-                        selected = currentScreen == Screen.LINK_DEVICE,
-                        onClick = { currentScreen = Screen.LINK_DEVICE },
-                        icon = { Icon(Icons.Default.Link, contentDescription = "Link Device") },
-                        label = { Text("Link") }
+                )
+
+                // ── Divider ──
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .background(Divider)
+                )
+
+                // ── Main content ──
+                when {
+                    selectedNav == NavItem.LINK_DEVICE -> LinkDeviceScreen(
+                        onBack = {
+                            selectedNav = NavItem.CONVERSATIONS
+                            inChat = false
+                        }
                     )
-                }
 
-                VerticalDivider(modifier = Modifier.fillMaxHeight())
+                    inChat && selectedContact != null -> ChatPane(
+                        contact = selectedContact!!,
+                        messagingManager = messagingManager,
+                        onBack = { inChat = false }
+                    )
 
-                // --- Main content ---
-                when (currentScreen) {
-                    Screen.CONVERSATIONS -> ConversationsPane(
+                    else -> ConversationsPane(
+                        refreshKey = contactsRefreshKey,
                         onContactSelected = { contact ->
                             selectedContact = contact
-                            currentScreen = Screen.CHAT
-                        }
-                    )
-                    Screen.CHAT -> {
-                        val contact = selectedContact
-                        if (contact != null) {
-                            ChatPane(
-                                contact = contact,
-                                messagingManager = messagingManager,
-                                onBack = { currentScreen = Screen.CONVERSATIONS }
-                            )
-                        } else {
-                            currentScreen = Screen.CONVERSATIONS
-                        }
-                    }
-                    Screen.LINK_DEVICE -> LinkDeviceScreen(
-                        onLinked = { currentScreen = Screen.CONVERSATIONS }
+                            inChat = true
+                        },
+                        onRefresh = { contactsRefreshKey++ }
                     )
                 }
             }
@@ -87,46 +117,183 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
 }
 
 @Composable
-private fun ConversationsPane(onContactSelected: (DesktopContact) -> Unit) {
+private fun TacticalSidebar(
+    selectedNav: NavItem,
+    onNavSelect: (NavItem) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(220.dp)
+            .fillMaxHeight()
+            .background(Surface)
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        // App branding
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            Text(
+                text = "MESHCIPHER",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Accent,
+                letterSpacing = 2.sp
+            )
+            Text(
+                text = "SECURE MESSENGER",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                letterSpacing = 1.sp,
+                fontFamily = Monospace
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
+
+        Spacer(Modifier.height(8.dp))
+
+        // Navigation items
+        SidebarNavItem(
+            label = "MESSAGES",
+            icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            selected = selectedNav == NavItem.CONVERSATIONS,
+            onClick = { onNavSelect(NavItem.CONVERSATIONS) }
+        )
+
+        SidebarNavItem(
+            label = "LINK DEVICE",
+            icon = { Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            selected = selectedNav == NavItem.LINK_DEVICE,
+            onClick = { onNavSelect(NavItem.LINK_DEVICE) }
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
+
+        Spacer(Modifier.height(12.dp))
+
+        // Status footer
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(Accent)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "E2E ENCRYPTED",
+                style = MaterialTheme.typography.labelSmall,
+                color = Accent,
+                fontFamily = Monospace,
+                letterSpacing = 1.sp
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun SidebarNavItem(
+    label: String,
+    icon: @Composable () -> Unit,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bg = if (selected) AccentDim else Color.Transparent
+    val textColor = if (selected) Accent else TextSecondary
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CompositionLocalProvider(LocalContentColor provides textColor) {
+            icon()
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = textColor,
+            letterSpacing = 1.sp,
+            fontFamily = if (selected) Monospace else FontFamily.Default
+        )
+    }
+}
+
+@Composable
+private fun ConversationsPane(
+    refreshKey: Int,
+    onContactSelected: (DesktopContact) -> Unit,
+    onRefresh: () -> Unit
+) {
     var contacts by remember { mutableStateOf<List<DesktopContact>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshKey) {
+        isLoading = true
         contacts = ContactRepository.getAllContacts()
         isLoading = false
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("Messages") },
-            actions = {
-                IconButton(onClick = { /* placeholder: add contact */ }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add contact")
-                }
+    Column(
+        modifier = Modifier.fillMaxSize().background(Background)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Surface)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "MESSAGES",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Accent,
+                letterSpacing = 2.sp,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onRefresh, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextTertiary, modifier = Modifier.size(18.dp))
             }
-        )
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        when {
+            isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
             }
-        } else if (contacts.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+            contacts.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No contacts yet", style = MaterialTheme.typography.bodyLarge)
+                    Text("NO CONTACTS", style = MaterialTheme.typography.titleSmall, color = TextTertiary, letterSpacing = 2.sp, fontFamily = Monospace)
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Link your phone to sync contacts",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Link your phone to sync contacts", style = MaterialTheme.typography.bodySmall, color = TextTertiary)
                 }
             }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+
+            else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(contacts, key = { it.id }) { contact ->
                     ContactRow(contact = contact, onClick = { onContactSelected(contact) })
-                    HorizontalDivider()
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
                 }
             }
         }
@@ -135,36 +302,47 @@ private fun ConversationsPane(onContactSelected: (DesktopContact) -> Unit) {
 
 @Composable
 private fun ContactRow(contact: DesktopContact, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .background(Surface)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Avatar circle
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(avatarColor(contact.displayName)),
+            contentAlignment = Alignment.Center
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = contact.displayName.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(text = contact.displayName, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    text = contact.contactId.take(16) + "...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = contact.displayName.take(1).uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = contact.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = contact.contactId.take(16) + "…",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextTertiary,
+                fontFamily = Monospace,
+                maxLines = 1
+            )
         }
     }
 }
@@ -180,133 +358,189 @@ private fun ChatPane(
     var inputText by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
-    // Load history from DB
     LaunchedEffect(contact.contactId) {
         messages = MessageRepository.getForContact(contact.contactId)
     }
 
-    // Listen for new incoming messages from relay
     LaunchedEffect(contact.contactId, messagingManager) {
-        messagingManager?.newMessages
-            ?.collect { msg ->
-                if (msg.contactId == contact.contactId) {
-                    messages = messages + msg
-                }
-            }
+        messagingManager?.newMessages?.collect { msg ->
+            if (msg.contactId == contact.contactId) messages = messages + msg
+        }
     }
 
-    // Auto-scroll to bottom when messages change
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(contact.displayName) },
-            navigationIcon = {
-                TextButton(onClick = onBack) { Text("Back") }
+    fun sendCurrent() {
+        val text = inputText.trim()
+        if (text.isEmpty() || isSending) return
+        scope.launch {
+            isSending = true
+            if (messagingManager != null) {
+                messagingManager.sendMessage(text, contact.contactId).onSuccess { msg ->
+                    messages = messages + msg
+                    inputText = ""
+                }
+            } else {
+                val msg = MessageRepository.save(contact.contactId, text, true)
+                messages = messages + msg
+                inputText = ""
             }
-        )
+            isSending = false
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().background(Background)
+    ) {
+        // Chat header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Surface)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Accent)
+            }
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(avatarColor(contact.displayName)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(contact.displayName.take(1).uppercase(), fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(contact.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text("END-TO-END ENCRYPTED", style = MaterialTheme.typography.labelSmall, color = Accent, fontFamily = Monospace, letterSpacing = 1.sp)
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
 
         if (messagingManager == null) {
             Box(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF2A1A1A)).padding(10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "Relay not configured — messages will not be sent or received. " +
-                        "Add relayUrl and authToken to ~/.config/meshcipher/relay.conf",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    "Relay not configured — add relayUrl and authToken to ~/.config/meshcipher/relay.conf",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ErrorRed,
+                    fontFamily = Monospace
                 )
             }
         }
 
-        // Messages list
+        // Messages
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(vertical = 12.dp)
         ) {
             items(messages, key = { it.id }) { msg ->
-                MessageBubble(msg)
+                MessageBubble(msg, timeFormat)
             }
         }
 
         // Input bar
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Surface)
+                .padding(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Message") },
+                modifier = Modifier
+                    .weight(1f)
+                    .onPreviewKeyEvent { event ->
+                        if (event.key == Key.Enter && !event.isShiftPressed && event.type == KeyEventType.KeyDown) {
+                            sendCurrent()
+                            true
+                        } else false
+                    },
+                placeholder = { Text("Message", color = TextTertiary, style = MaterialTheme.typography.bodySmall) },
                 maxLines = 5,
-                enabled = !isSending
+                enabled = !isSending,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Accent,
+                    unfocusedBorderColor = Divider,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    cursorColor = Accent,
+                    focusedContainerColor = SurfaceElevated,
+                    unfocusedContainerColor = SurfaceElevated
+                ),
+                shape = RoundedCornerShape(8.dp),
+                textStyle = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
-                onClick = {
-                    val text = inputText.trim()
-                    if (text.isNotEmpty()) {
-                        scope.launch {
-                            isSending = true
-                            val result = messagingManager?.sendMessage(text, contact.contactId)
-                            result?.onSuccess { msg ->
-                                messages = messages + msg
-                                inputText = ""
-                            }
-                            // If no messaging manager, persist locally only
-                            if (messagingManager == null) {
-                                val msg = MessageRepository.save(
-                                    contactId = contact.contactId,
-                                    content = text,
-                                    isOutgoing = true
-                                )
-                                messages = messages + msg
-                                inputText = ""
-                            }
-                            isSending = false
-                        }
-                    }
-                },
-                enabled = inputText.isNotBlank() && !isSending
+                onClick = { sendCurrent() },
+                enabled = inputText.isNotBlank() && !isSending,
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (inputText.isNotBlank() && !isSending) Accent else SurfaceElevated)
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (inputText.isNotBlank() && !isSending) Color.Black else TextTertiary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(msg: DesktopMessage) {
-    val alignment = if (msg.isOutgoing) Alignment.End else Alignment.Start
-    val containerColor = if (msg.isOutgoing)
-        MaterialTheme.colorScheme.primary
-    else
-        MaterialTheme.colorScheme.surfaceVariant
-
-    val textColor = if (msg.isOutgoing)
-        MaterialTheme.colorScheme.onPrimary
-    else
-        MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        horizontalAlignment = alignment
+private fun MessageBubble(msg: DesktopMessage, timeFormat: SimpleDateFormat) {
+    val isOut = msg.isOutgoing
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isOut) Arrangement.End else Arrangement.Start
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = containerColor,
-            modifier = Modifier.widthIn(max = 400.dp)
+        Column(
+            horizontalAlignment = if (isOut) Alignment.End else Alignment.Start,
+            modifier = Modifier.widthIn(max = 420.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 12.dp, topEnd = 12.dp,
+                            bottomStart = if (isOut) 12.dp else 2.dp,
+                            bottomEnd = if (isOut) 2.dp else 12.dp
+                        )
+                    )
+                    .background(if (isOut) OutgoingBubble else IncomingBubble)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = msg.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isOut) Accent else TextPrimary
+                )
+            }
+            Spacer(Modifier.height(2.dp))
             Text(
-                text = msg.content,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                color = textColor,
-                style = MaterialTheme.typography.bodyMedium
+                text = timeFormat.format(Date(msg.timestamp)),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontFamily = Monospace,
+                fontSize = 10.sp
             )
         }
     }

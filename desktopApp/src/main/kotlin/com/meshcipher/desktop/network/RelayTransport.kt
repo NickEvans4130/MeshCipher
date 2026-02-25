@@ -9,18 +9,70 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/**
+ * Flat format used for desktop→desktop relay messages sent via WebSocket.
+ */
 @Serializable
 data class RelayMessage(
     val type: String,
     val senderId: String = "",
     val recipientId: String = "",
     val payload: String = "",
-    val token: String = ""
+    val token: String = "",
+    /** Nested body present when the relay server delivers an HTTP-posted message. */
+    val message: RelayPushBody? = null
 )
+
+/**
+ * Body of messages pushed by the relay server when it delivers an HTTP POST.
+ * The relay sends: {"type":"new_message","message":{...}}
+ */
+@Serializable
+data class RelayPushBody(
+    @SerialName("id") val id: String = "",
+    @SerialName("sender_id") val senderId: String = "",
+    @SerialName("recipient_id") val recipientId: String = "",
+    @SerialName("encrypted_content") val encryptedContent: String = "",
+    @SerialName("content_type") val contentType: Int = 0,
+    @SerialName("queued_at") val queuedAt: String? = null
+)
+
+/** Normalised view of a relay message regardless of which format it arrived in. */
+data class NormalizedMessage(
+    val senderId: String,
+    val recipientId: String,
+    /** Raw payload — may be base64 (from relay push) or plain JSON (desktop→desktop). */
+    val rawPayload: String,
+    val contentType: Int
+)
+
+fun RelayMessage.normalize(): NormalizedMessage? {
+    val body = message
+    return if (body != null && body.senderId.isNotBlank()) {
+        // Relay server push format
+        NormalizedMessage(
+            senderId = body.senderId,
+            recipientId = body.recipientId,
+            rawPayload = body.encryptedContent,
+            contentType = body.contentType
+        )
+    } else if (senderId.isNotBlank() && payload.isNotBlank()) {
+        // Desktop-to-desktop WebSocket format
+        NormalizedMessage(
+            senderId = senderId,
+            recipientId = recipientId,
+            rawPayload = payload,
+            contentType = 0
+        )
+    } else {
+        null
+    }
+}
 
 enum class RelayState { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -28,7 +80,6 @@ class RelayTransport(
     private val relayBaseUrl: String,
     private val deviceId: String,
     private val authToken: String,
-    /** When non-null, relay traffic is routed via this TOR SOCKS proxy. */
     private val torManager: TorManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -77,7 +128,6 @@ class RelayTransport(
         var delayMs = 1_000L
         while (true) {
             try {
-                // Apply TOR SOCKS proxy via system properties if enabled and running
                 if (torManager != null && torManager.isRunning) {
                     torManager.applySystemProxy()
                 } else {
@@ -95,9 +145,8 @@ class RelayTransport(
                 ) {
                     wsSession = this
                     _state.value = RelayState.CONNECTED
-                    delayMs = 1_000L // reset backoff on success
+                    delayMs = 1_000L
 
-                    // Auth handshake
                     val authMsg = RelayMessage(type = "auth", token = authToken, senderId = deviceId)
                     send(Frame.Text(json.encodeToString(authMsg)))
 
@@ -112,8 +161,8 @@ class RelayTransport(
                 }
             } catch (_: CancellationException) {
                 break
-            } catch (e: Exception) {
-                // Connection failed — fall through to backoff
+            } catch (_: Exception) {
+                // fall through to backoff
             }
 
             wsSession = null
