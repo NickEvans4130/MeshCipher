@@ -106,6 +106,83 @@ com.meshcipher/
     wifidirect/     WiFi Direct status
 ```
 
+## Desktop App
+
+A Compose Desktop client for Linux (Fedora/Ubuntu) and Windows, sharing the same KMM encryption and identity layer as the Android app.
+
+### Features
+
+- Device linking via QR code (desktop shows QR, phone scans and approves)
+- End-to-end encrypted messaging (ECDH-derived AES-256-GCM; Signal Protocol X3DH planned)
+- SQLite message persistence via Exposed ORM
+- Relay WebSocket transport with automatic reconnect (exponential backoff)
+- TOR relay mode — routes WebSocket traffic via system `tor` daemon (SOCKS5 port 19050)
+- P2P TOR mode — desktop runs a `.onion` hidden service for relay-free direct messaging
+- OS keyring via libsecret (GNOME Keyring / KWallet); plaintext file fallback
+
+### Quick start
+
+```bash
+# Configure relay (one-time)
+mkdir -p ~/.config/meshcipher
+cat > ~/.config/meshcipher/relay.conf <<EOF
+relayUrl=https://relay.meshcipher.com
+authToken=<your JWT token>
+EOF
+
+# Build and run
+./desktopApp/run.sh
+```
+
+### First run
+
+1. The app opens on the **Link** screen and shows a QR code
+2. On your phone: Settings → Linked Devices → Link New Device → scan QR
+3. Approve the link on the phone
+4. Contacts appear in the conversations list — start messaging
+
+### TOR mode
+
+Install the `tor` daemon (Fedora/Ubuntu):
+```bash
+sudo dnf install tor   # Fedora
+sudo apt install tor   # Ubuntu/Debian
+```
+
+Enable TOR mode in app settings. The desktop starts the `tor` process, waits for full bootstrap, then routes all relay traffic through SOCKS5 port 19050. The relay server sees a TOR exit node, not your real IP.
+
+**P2P TOR**: the desktop can also create a `.onion` hidden service. Enable it in settings — the app appends `HiddenServiceDir` to `torrc`, sends SIGHUP to reload TOR, and displays the `.onion` address once generated. Share it with contacts for direct, relay-free, fully anonymous messaging.
+
+### Packaging
+
+```bash
+# Fedora (.rpm)
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :desktopApp:packageRpm --no-daemon
+
+# Debian/Ubuntu (.deb)
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :desktopApp:packageDeb --no-daemon
+```
+
+### Configuration files
+
+All config under `~/.config/meshcipher/`:
+
+| File | Contents |
+|------|----------|
+| `relay.conf` | `relayUrl` and `authToken` |
+| `identity.pub` | EC P-256 public key (X.509 encoded) |
+| `identity.key.enc` | AES-256-GCM encrypted private key |
+| `wrap.key` | Wrap key fallback (deleted when libsecret is available) |
+| `device.id` | Stable desktop device UUID |
+
+### Testing
+
+```bash
+./desktopApp/test-messaging.sh
+```
+
+Verifies build, key storage, relay config, TOR availability, and interactively checks device linking and send/receive flows.
+
 ## Documentation
 
 Detailed technical documentation is in [docs/](docs/):
