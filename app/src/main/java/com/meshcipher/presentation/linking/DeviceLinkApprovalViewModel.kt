@@ -7,6 +7,7 @@ import com.meshcipher.data.repository.LinkedDevicesRepository
 import com.meshcipher.data.transport.InternetTransport
 import com.meshcipher.shared.domain.model.DeviceLinkRequest
 import com.meshcipher.shared.domain.model.DeviceLinkResponse
+import com.meshcipher.shared.domain.model.DeviceType
 import com.meshcipher.shared.domain.model.LinkedDevice
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,7 +53,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                     LinkedDevice(
                         deviceId = request.deviceId,
                         deviceName = request.deviceName,
-                        deviceType = request.deviceType,
+                        deviceType = request.deviceType ?: DeviceType.DESKTOP,
                         publicKeyHex = request.publicKeyHex,
                         linkedAt = System.currentTimeMillis(),
                         approved = true

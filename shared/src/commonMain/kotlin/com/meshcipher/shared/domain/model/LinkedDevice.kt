@@ -22,7 +22,9 @@ data class LinkedDevice(
 data class DeviceLinkRequest(
     val deviceId: String,
     val deviceName: String,
-    val deviceType: DeviceType = DeviceType.DESKTOP,
+    // Nullable so Gson (used on Android) correctly handles missing/unknown values
+    // instead of throwing NPE when the field is absent from the JSON payload.
+    val deviceType: DeviceType? = DeviceType.DESKTOP,
     val publicKeyHex: String,
     val timestamp: Long
 )
