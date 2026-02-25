@@ -27,7 +27,9 @@ enum class RelayState { DISCONNECTED, CONNECTING, CONNECTED }
 class RelayTransport(
     private val relayBaseUrl: String,
     private val deviceId: String,
-    private val authToken: String
+    private val authToken: String,
+    /** When non-null, relay traffic is routed via this TOR SOCKS proxy. */
+    private val torManager: TorManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -53,6 +55,7 @@ class RelayTransport(
 
     fun disconnect() {
         reconnectJob?.cancel()
+        torManager?.clearSystemProxy()
         scope.launch {
             wsSession?.close(CloseReason(CloseReason.Codes.NORMAL, "client disconnect"))
             _state.value = RelayState.DISCONNECTED
@@ -74,6 +77,13 @@ class RelayTransport(
         var delayMs = 1_000L
         while (true) {
             try {
+                // Apply TOR SOCKS proxy via system properties if enabled and running
+                if (torManager != null && torManager.isRunning) {
+                    torManager.applySystemProxy()
+                } else {
+                    torManager?.clearSystemProxy()
+                }
+
                 _state.value = RelayState.CONNECTING
                 val wsUrl = relayBaseUrl
                     .replace("https://", "wss://")

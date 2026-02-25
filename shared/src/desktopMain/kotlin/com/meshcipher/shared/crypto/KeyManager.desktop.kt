@@ -66,6 +66,14 @@ actual class KeyManager actual constructor() {
         publicKeyFile.delete()
         privateKeyFile.delete()
         wrapKeyFile.delete()
+        // Also remove from libsecret if present
+        try {
+            ProcessBuilder(
+                "secret-tool", "clear",
+                "application", "meshcipher",
+                "key-type", "wrap"
+            ).start().waitFor()
+        } catch (_: Exception) { }
     }
 
     /**
@@ -98,14 +106,75 @@ actual class KeyManager actual constructor() {
         return java.security.KeyFactory.getInstance("EC").generatePrivate(spec)
     }
 
+    /**
+     * Retrieve or generate the AES-256 wrap key used to encrypt the private key file.
+     *
+     * Storage priority:
+     * 1. OS keyring via `secret-tool` (GNOME Keyring / KWallet / libsecret)
+     * 2. Plaintext wrap.key file as fallback (for systems without libsecret)
+     *
+     * On first run the key is generated and stored in the best available backend.
+     * If libsecret becomes available later, the key is migrated automatically.
+     */
     private fun getOrCreateWrapKey(): ByteArray {
-        if (wrapKeyFile.exists()) return wrapKeyFile.readBytes()
+        // 1. Try to load from libsecret
+        loadFromLibsecret()?.let { return it }
+
+        // 2. Fall back to plaintext file (legacy or no libsecret)
+        if (wrapKeyFile.exists()) {
+            val key = wrapKeyFile.readBytes()
+            // Opportunistic migration: store in libsecret and delete file
+            if (storeInLibsecret(key)) {
+                wrapKeyFile.delete()
+            }
+            return key
+        }
+
+        // 3. Generate a new key
         val kg = KeyGenerator.getInstance("AES")
         kg.init(256, SecureRandom())
         val key = kg.generateKey().encoded
-        wrapKeyFile.writeBytes(key)
+
+        if (!storeInLibsecret(key)) {
+            // libsecret unavailable — use plaintext file
+            wrapKeyFile.writeBytes(key)
+        }
         return key
     }
+
+    /**
+     * Store [keyBytes] in the OS keyring via `secret-tool`.
+     * Returns true if stored successfully.
+     */
+    private fun storeInLibsecret(keyBytes: ByteArray): Boolean = try {
+        val pb = ProcessBuilder(
+            "secret-tool", "store",
+            "--label=MeshCipher identity wrap key",
+            "application", "meshcipher",
+            "key-type", "wrap"
+        )
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        proc.outputStream.use { it.write(keyBytes) }
+        proc.waitFor() == 0
+    } catch (_: Exception) { false }
+
+    /**
+     * Retrieve the wrap key from the OS keyring.
+     * Returns null if not found or libsecret unavailable.
+     */
+    private fun loadFromLibsecret(): ByteArray? = try {
+        val pb = ProcessBuilder(
+            "secret-tool", "lookup",
+            "application", "meshcipher",
+            "key-type", "wrap"
+        )
+        pb.redirectErrorStream(false)
+        val proc = pb.start()
+        val bytes = proc.inputStream.readBytes()
+        val exit = proc.waitFor()
+        if (exit == 0 && bytes.isNotEmpty()) bytes else null
+    } catch (_: Exception) { null }
 
     private fun aesGcmEncrypt(plaintext: ByteArray, keyBytes: ByteArray): ByteArray {
         val key = SecretKeySpec(keyBytes, "AES")
