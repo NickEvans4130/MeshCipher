@@ -100,7 +100,7 @@ dependencies {
     implementation(project(":shared"))
 
     // Core library desugaring (required by libsignal-android)
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
