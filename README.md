@@ -7,6 +7,7 @@ A privacy-focused encrypted messaging app for Android with five independent tran
 
 - **End-to-End Encryption** - Signal Protocol (X3DH + Double Ratchet) for all messages
 - **Five Transport Modes** - Direct relay, Tor relay, WiFi Direct, Bluetooth mesh, P2P Tor hidden services
+- **Smart Mode** - Automatic transport selection based on network conditions and availability
 - **Real-Time Messaging** - WebSocket push delivery with automatic fallback to polling
 - **Secure Media Sharing** - Images, video, and voice messages encrypted with AES-256-GCM in transit and at rest
 - **EXIF Metadata Stripping** - GPS, timestamps, device info automatically removed from all outgoing images
@@ -15,8 +16,10 @@ A privacy-focused encrypted messaging app for Android with five independent tran
 - **Anonymous Messaging** - P2P Tor mode uses .onion hidden services with no relay server
 - **Disappearing Messages** - Configurable auto-delete (on close, 5min, 1hr, 24hr, 7d, 30d)
 - **QR Code Contact Exchange** - In-person key verification
+- **Safety Numbers** - Automatic key-rotation detection with 120-digit verified fingerprints
 - **Encrypted Database** - SQLCipher (AES-256) for all local data
 - **Persistent Encrypted Sessions** - Signal Protocol state survives app restarts, encrypted at rest
+- **Desktop Companion** - Compose Desktop client (Linux/Windows) linkable via QR code
 
 ## Transport Modes
 
@@ -37,6 +40,7 @@ Presentation    Jetpack Compose + MVVM (ViewModel + StateFlow)
 Domain          Pure Kotlin models, repository interfaces
 Data            Room/SQLCipher, Signal Protocol, BLE, WiFi P2P, Tor, Retrofit
 DI              Hilt
+Shared (KMM)    :shared module — Android + Desktop common models and crypto
 ```
 
 See [docs/](docs/) for detailed technical documentation.
@@ -76,18 +80,26 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :app:testDebugUnitTest --no-dae
 ```
 com.meshcipher/
   data/
+    auth/           JWT token storage
     bluetooth/      BLE mesh (advertising, scanning, GATT, routing)
     cleanup/        Disappearing messages lifecycle
-    crypto/         Signal Protocol encrypt/decrypt
+    crypto/         Signal Protocol encrypt/decrypt, SafetyNumberManager
+    encryption/     AES-256-GCM low-level helpers
     identity/       Hardware key management (Android Keystore)
     local/          Room + SQLCipher database, DataStore preferences
     media/          AES-256-GCM media encryption (transport + at-rest), EXIF stripping
+    network/        NetworkMonitor (connectivity state)
+    queue/          OfflineQueueManager (retry on reconnect)
+    recovery/       Session recovery helpers
     relay/          WebSocket real-time message delivery
     remote/         Relay server API (Retrofit)
+    repository/     Concrete repository implementations
     security/       Message sequence tracking (replay prevention)
+    service/        MessageForwardingService (linked device forwarding)
     tor/            Embedded Tor, hidden services, P2P connections
-    transport/      TransportManager + all transport implementations
+    transport/      TransportManager, SmartModeManager + all transport implementations
     wifidirect/     WiFi P2P manager, TCP socket protocol
+    worker/         WorkManager tasks (sync, cleanup)
   domain/
     model/          Message, Contact, Identity, MeshMessage, P2PMessage, etc.
     repository/     Repository interfaces
@@ -97,13 +109,23 @@ com.meshcipher/
     contacts/       Contact list, detail, add
     conversations/  Conversation list
     guide/          Onboarding guide (connection mode walkthrough)
+    linking/        Linked devices, QR scanner, device approval screens
     mesh/           Bluetooth mesh status
     navigation/     NavHost, Screen routes
     onboarding/     Identity creation
     p2ptor/         P2P Tor status
+    permissions/    Runtime permission flow
+    scan/           QR code scanner (CameraX + ML Kit)
     settings/       App settings
+    share/          QR code generation (share contact)
     theme/          Dark tactical theme (Inter + Roboto Mono)
+    verify/         Safety number verification screen
     wifidirect/     WiFi Direct status
+
+shared/             KMM module — shared models and crypto (Android + Desktop)
+  commonMain/       Contact, Message, LinkedDevice, ConnectionMode, SafetyNumberGenerator, KeyManager (expect)
+  androidMain/      Android Keystore KeyManager, SHA-512, UUID actuals
+  desktopMain/      File-based KeyManager, SHA-512, UUID actuals
 ```
 
 ## Desktop App

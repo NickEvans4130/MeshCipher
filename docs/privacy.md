@@ -124,12 +124,18 @@ QR scanning verifies physical presence - both users must be in the same location
 
 ### Safety Numbers
 
-After establishing a Signal Protocol session, users can verify their connection by comparing safety numbers displayed in the Contact Detail screen. These are derived from both parties' identity keys:
+After establishing a Signal Protocol session, users can verify their connection by comparing safety numbers in the dedicated `VerifySafetyNumberScreen`. Safety numbers are derived from both parties' identity keys via the `SafetyNumberGenerator` in the `:shared` KMM module:
 
 ```
-safetyNumber = SHA-256(localIdentityKey + remoteIdentityKey)
-              -> formatted as 12-digit numeric string
+1. Canonically order both users (lexicographic on userId)
+2. input = userId1 + publicKey1 + userId2 + publicKey2
+3. hash = SHA-512(input), iterated 5200 times
+4. Output: 120-digit decimal string derived from the final hash bytes
 ```
+
+The canonical ordering ensures that both parties compute identical safety numbers regardless of who initiates the comparison.
+
+**Automatic key-rotation detection**: `SafetyNumberManager` recomputes safety numbers for all contacts at app startup. If a contact's key has changed since the last user verification, a warning banner appears in the chat screen and the contact detail screen shows a red verify button. `safetyNumberChangedAt` records when the mismatch was first detected.
 
 ## Data Sovereignty
 

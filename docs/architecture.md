@@ -58,31 +58,40 @@ MainActivity
 ```
 Conversations (start) -> Chat{conversationId}
                       -> Contacts -> ContactDetail{contactId} -> Chat
-                                  -> AddContact{?userId,?onionAddress}
+                                                              -> VerifySafetyNumber{contactId}
+                                  -> AddContact{?userId,?onionAddress,?publicKey,?deviceId}
                       -> Settings -> MeshNetwork
                                   -> ShareContact
                                   -> ScanContact -> AddContact
                                   -> WifiDirect
                                   -> P2PTor
                                   -> Guide
+                                  -> LinkedDevices -> ScanDeviceQr -> DeviceLinkApproval{requestJson}
 ```
 
 ## Domain Layer (`domain/`)
 
 Pure Kotlin with no Android framework dependencies. Contains:
 
-### Models
+### Models (Shared KMM — `shared/commonMain`)
+
+These live in the `:shared` KMM module and are consumed by both Android and desktop:
+
 - `Message` - id, conversationId, senderId, recipientId, content, status, timestamp, mediaAttachment
-- `Contact` - id, displayName, publicKey, identityKey, signalProtocolAddress, onionAddress
+- `Contact` - id, displayName, publicKey, identityKey, signalProtocolAddress, onionAddress, currentSafetyNumber, verifiedSafetyNumber, safetyNumberVerifiedAt, safetyNumberChangedAt
+- `MediaAttachment` - decrypted media reference with local file path and media type
+- `ConnectionMode` - enum: DIRECT, TOR_RELAY, P2P_ONLY, P2P_TOR
+- `LinkedDevice` - deviceId, deviceName, deviceType, publicKeyHex, linkedAt, approved
+
+### Models (Android-only)
+
 - `Conversation` - id, contactId, lastMessage, unreadCount, isPinned, messageExpiryMode
 - `Identity` - userId (SHA-256 hash of public key), hardwarePublicKey, deviceId, deviceName
-- `ConnectionMode` - enum: DIRECT, TOR_RELAY, P2P_ONLY, P2P_TOR
 - `MeshPeer` - deviceId, userId, rssi, lastSeen, isInRange
 - `MeshMessage` - binary mesh protocol message with TTL and hop tracking
 - `P2PMessage` - JSON-over-TCP message for Tor hidden service communication
 - `WifiDirectMessage` - sealed class hierarchy for WiFi Direct protocol (Text, FileTransfer, FileChunk, Acknowledgment)
 - `MediaMessageEnvelope` - encrypted media container with AES key/IV and metadata
-- `MediaAttachment` - decrypted media reference with local file path
 - `ContactCard` - QR code exchange format (userId, publicKey, onionAddress)
 - `MessageExpiryMode` - enum: NEVER, ON_APP_CLOSE, 5min, 1hr, 24hr, 7d, 30d
 
@@ -102,15 +111,21 @@ Implements domain interfaces and handles all I/O:
 | `auth/` | JWT token storage (EncryptedSharedPreferences) |
 | `bluetooth/` | BLE mesh manager, GATT server/client, mesh routing |
 | `cleanup/` | Message expiry lifecycle (ProcessLifecycleOwserver) |
-| `crypto/` | Signal Protocol session management, encrypt/decrypt |
+| `crypto/` | Signal Protocol session management, encrypt/decrypt, SafetyNumberManager |
+| `encryption/` | Low-level AES-256-GCM helpers |
 | `identity/` | Hardware-backed key generation (Android Keystore), identity persistence |
 | `local/` | Room database (SQLCipher), entities, DAOs, DataStore preferences |
 | `media/` | AES-256-GCM encryption (transport + at-rest), file storage, EXIF stripping |
+| `network/` | NetworkMonitor (ConnectivityManager → StateFlow<Boolean>) |
+| `queue/` | OfflineQueueManager (in-memory queue, retry on reconnect) |
+| `recovery/` | Session recovery helpers |
 | `relay/` | WebSocketManager (real-time push delivery via OkHttp WebSocket) |
 | `remote/` | Retrofit API service for relay server |
+| `repository/` | Concrete repository implementations |
 | `security/` | Message sequence tracking (replay attack prevention) |
+| `service/` | MessageForwardingService (forwards messages to approved linked devices) |
 | `tor/` | Orbot integration, embedded Tor daemon, hidden service server, P2P client |
-| `transport/` | TransportManager and per-mode transport implementations |
+| `transport/` | TransportManager, SmartModeManager, and all transport implementations |
 | `wifidirect/` | WiFi P2P manager, TCP socket manager |
 | `worker/` | WorkManager tasks for message sync and scheduled cleanup |
 
@@ -118,7 +133,7 @@ Implements domain interfaces and handles all I/O:
 
 Hilt modules provide:
 
-- **Singletons**: Database, DAOs, Repositories, TransportManager, IdentityManager, SignalProtocolManager, AppPreferences, TorManager, BluetoothMeshManager, WifiDirectManager, P2PConnectionManager, MediaEncryptor, MediaFileManager, WebSocketManager, MessageCleanupManager, MessageSequenceTracker
+- **Singletons**: Database, DAOs, Repositories, TransportManager, IdentityManager, SignalProtocolManager, AppPreferences, TorManager, BluetoothMeshManager, WifiDirectManager, P2PConnectionManager, MediaEncryptor, MediaFileManager, WebSocketManager, MessageCleanupManager, MessageSequenceTracker, SafetyNumberManager, LinkedDevicesRepository, MessageForwardingService, SmartModeManager, NetworkMonitor, OfflineQueueManager
 - **ViewModelScoped**: Use cases injected via `@HiltViewModel` constructor
 
 ## Data Flow: Sending a Message
@@ -179,3 +194,33 @@ If WebSocket is disconnected, messages are received via HTTP polling (3s in chat
 | P2PTorService | 1002 | Tor daemon, hidden service server |
 
 Both services are `START_STICKY` and run as foreground services with persistent notifications.
+
+## KMM Shared Module (`:shared`)
+
+The `:shared` Kotlin Multiplatform module provides code shared between Android and desktop:
+
+- **Targets**: `androidTarget` + `jvm("desktop")` (iOS targets present but inactive on Linux)
+- **commonMain**: Domain models (`Contact`, `Message`, `MediaAttachment`, `ConnectionMode`, `LinkedDevice`), `SafetyNumberGenerator` (open class), `KeyManager` (expect class), `sha512` / `generateUUID` (expect functions)
+- **androidMain actuals**: SHA-512 via `MessageDigest`, UUID via `java.util.UUID`, `KeyManager` via Android Keystore; `ContactExtensions.kt` (Signal Protocol address helper)
+- **desktopMain actuals**: SHA-512 via `MessageDigest`, UUID via `java.util.UUID`, `KeyManager` via file-based AES-256-GCM under `~/.config/meshcipher/`
+- Android domain model files are type aliases to shared types — no import changes across the Android codebase
+
+## Smart Mode
+
+Smart Mode (`SmartModeManager`) automatically selects the best available transport at runtime:
+
+- Tracks the `ActiveTransport` as a `StateFlow` exposed to `ChatViewModel` via `activeTransportLabel`
+- `reportTransportUsed()` updates the active transport after each successful send
+- `NetworkMonitor` observes `ConnectivityManager` callbacks and exposes `StateFlow<Boolean>`
+- `OfflineQueueManager` holds an in-memory queue and emits a `retryTrigger` when connectivity is restored
+- Controlled by `AppPreferences.smartModeEnabled` (default `true`) and `AppPreferences.preferTor` (default `false`)
+
+## Device Linking (Android ↔ Desktop)
+
+The linking flow connects the Android app to the desktop client:
+
+1. Desktop generates a `DeviceLinkRequest` encoded as `meshcipher://link/<base64url-JSON>` and displays it as a QR code (`DeviceLinkManager` via ZXing)
+2. Android scans the QR via `QRScannerScreen` (CameraX + ML Kit) and decodes the URI
+3. `DeviceLinkApprovalScreen` presents device details; the user approves or rejects
+4. On approval, `LinkedDevice` is upserted into the `linked_devices` table with `approved = true`
+5. `MessageForwardingService` monitors the database and forwards incoming messages to all approved linked devices via `InternetTransport.sendMessage()`
