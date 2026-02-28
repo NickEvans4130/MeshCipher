@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.meshcipher.data.local.database.ContactDao
 import com.meshcipher.data.local.database.ConversationDao
 import com.meshcipher.data.local.database.DatabaseKeyProvider
+import com.meshcipher.data.local.database.LinkedDeviceDao
 import com.meshcipher.data.local.database.MeshCipherDatabase
 import com.meshcipher.data.local.database.MessageDao
 import dagger.Module
@@ -38,7 +39,8 @@ object DatabaseModule {
                 MeshCipherDatabase.MIGRATION_1_3,
                 MeshCipherDatabase.MIGRATION_2_3,
                 MeshCipherDatabase.MIGRATION_3_4,
-                MeshCipherDatabase.MIGRATION_4_5
+                MeshCipherDatabase.MIGRATION_4_5,
+                MeshCipherDatabase.MIGRATION_5_6
             )
             .build()
     }
@@ -56,5 +58,10 @@ object DatabaseModule {
     @Provides
     fun provideConversationDao(database: MeshCipherDatabase): ConversationDao {
         return database.conversationDao()
+    }
+
+    @Provides
+    fun provideLinkedDeviceDao(database: MeshCipherDatabase): LinkedDeviceDao {
+        return database.linkedDeviceDao()
     }
 }

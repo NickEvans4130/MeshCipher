@@ -4,7 +4,7 @@
 
 - **Engine**: SQLite via Room Persistence Library
 - **Encryption**: SQLCipher (AES-256-CBC with HMAC-SHA256 page authentication)
-- **Version**: 4
+- **Version**: 6
 - **Key Storage**: Database encryption key stored in EncryptedSharedPreferences (backed by Android Keystore master key)
 
 ## Entities
@@ -15,21 +15,49 @@
 @Entity(tableName = "contacts", indices = [Index("display_name")])
 data class ContactEntity(
     @PrimaryKey
-    val id: String,                       // userId (SHA-256 hash of public key)
+    val id: String,                                      // userId (SHA-256 hash of public key)
     @ColumnInfo(name = "display_name")
     val displayName: String,
     @ColumnInfo(name = "public_key")
-    val publicKey: ByteArray,             // ECDSA P-256 public key
+    val publicKey: ByteArray,                            // ECDSA P-256 public key
     @ColumnInfo(name = "identity_key")
-    val identityKey: ByteArray,           // Signal Protocol identity key (Curve25519)
+    val identityKey: ByteArray,                          // Signal Protocol identity key (Curve25519)
     @ColumnInfo(name = "signal_protocol_address")
-    val signalProtocolAddress: String,    // "userId@deviceId"
+    val signalProtocolAddress: String,                   // "userId@deviceId"
     @ColumnInfo(name = "last_seen")
     val lastSeen: Long,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
     @ColumnInfo(name = "onion_address")
-    val onionAddress: String? = null      // .onion address for P2P Tor (added in migration 3->4)
+    val onionAddress: String? = null,                    // .onion address for P2P Tor (added in migration 3->4)
+    @ColumnInfo(name = "current_safety_number")
+    val currentSafetyNumber: String? = null,             // Latest computed 120-digit safety number (added in migration 4->5)
+    @ColumnInfo(name = "verified_safety_number")
+    val verifiedSafetyNumber: String? = null,            // Safety number at last user verification (added in migration 4->5)
+    @ColumnInfo(name = "safety_number_verified_at")
+    val safetyNumberVerifiedAt: Long? = null,            // Timestamp of last verification (added in migration 4->5)
+    @ColumnInfo(name = "safety_number_changed_at")
+    val safetyNumberChangedAt: Long? = null              // Timestamp of last key rotation detected (added in migration 4->5)
+)
+```
+
+### LinkedDeviceEntity (`linked_devices`)
+
+```kotlin
+@Entity(tableName = "linked_devices")
+data class LinkedDeviceEntity(
+    @PrimaryKey @ColumnInfo(name = "device_id")
+    val deviceId: String,                  // Stable UUID identifying the desktop device
+    @ColumnInfo(name = "device_name")
+    val deviceName: String,
+    @ColumnInfo(name = "device_type")
+    val deviceType: String,                // "DESKTOP", "ANDROID", etc.
+    @ColumnInfo(name = "public_key_hex")
+    val publicKeyHex: String,              // EC P-256 public key (hex-encoded)
+    @ColumnInfo(name = "linked_at")
+    val linkedAt: Long,                    // Unix timestamp of link request
+    @ColumnInfo(name = "approved")
+    val approved: Boolean                  // User-approved flag; only approved devices receive forwarded messages
 )
 ```
 
@@ -164,6 +192,32 @@ ALTER TABLE contacts ADD COLUMN onion_address TEXT DEFAULT NULL;
 
 Added .onion address field for P2P Tor hidden service addressing.
 
+### Version 4 -> 5
+
+```sql
+ALTER TABLE contacts ADD COLUMN current_safety_number TEXT DEFAULT NULL;
+ALTER TABLE contacts ADD COLUMN verified_safety_number TEXT DEFAULT NULL;
+ALTER TABLE contacts ADD COLUMN safety_number_verified_at INTEGER DEFAULT NULL;
+ALTER TABLE contacts ADD COLUMN safety_number_changed_at INTEGER DEFAULT NULL;
+```
+
+Added safety number tracking for detecting Signal Protocol identity key rotations.
+
+### Version 5 -> 6
+
+```sql
+CREATE TABLE IF NOT EXISTS linked_devices (
+    device_id TEXT NOT NULL PRIMARY KEY,
+    device_name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    public_key_hex TEXT NOT NULL,
+    linked_at INTEGER NOT NULL,
+    approved INTEGER NOT NULL
+);
+```
+
+Added linked_devices table for Android-to-desktop device linking.
+
 ## Preferences (DataStore)
 
 `AppPreferences` uses Jetpack DataStore for non-sensitive key-value preferences:
@@ -178,6 +232,10 @@ Added .onion address field for P2P Tor hidden service addressing.
 | `message_expiry_mode` | String | "NEVER" | Global default expiry |
 | `onion_address` | String? | null | This device's .onion address |
 | `has_seen_guide` | Boolean | false | Whether onboarding guide was viewed |
+| `has_completed_permissions` | Boolean | false | Whether runtime permission flow completed |
+| `relay_server_url` | String | "https://relay.meshcipher.com/" | Configurable relay server URL |
+| `smart_mode_enabled` | Boolean | true | Smart Mode (auto transport selection) toggle |
+| `prefer_tor` | Boolean | false | Prefer Tor relay over direct relay in Smart Mode |
 
 ## Sensitive Storage
 
@@ -191,7 +249,7 @@ EncryptedSharedPreferences (backed by Android Keystore master key) stores:
 | `SignalProtocolStoreImpl` (`signal_protocol_store`) | Identity key pair, registration ID, sessions, pre-keys, signed pre-keys, sender keys, Kyber pre-keys (all Base64-encoded serialized records) |
 | `MediaFileManager` (`media_encryption_keys`) | Per-file AES-256 keys and IVs for at-rest media encryption |
 | `EmbeddedTorManager` | ED25519-V3 hidden service private key |
-| `MessageSequenceTracker` | Per-sender message sequence numbers |
+| `MessageSequenceTracker` | Per-sender message sequence numbers (replay prevention) |
 
 ## Foreign Key Constraints
 

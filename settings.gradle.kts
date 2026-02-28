@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 rootProject.name = "MeshCipher"
 include(":app")
 include(":shared")
+include(":desktopApp")

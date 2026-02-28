@@ -95,13 +95,25 @@ Stored in `ContactEntity.signalProtocolAddress`. Used as the addressing scheme f
 
 ### Safety Number Verification
 
+Safety numbers allow users to verify that no man-in-the-middle has tampered with their Signal Protocol session.
+
+**Algorithm** (`SafetyNumberGenerator` in the `:shared` KMM module):
+
 ```
-SignalProtocolManager.getSafetyNumber(localIdentityKey, remoteIdentityKey)
-  -> SHA-256(localKey + remoteKey)
-  -> Returns 12-digit numeric string
+1. Canonically order both parties (lexicographic on userId to ensure identical output on both sides)
+2. input = userId1 + publicKey1 + userId2 + publicKey2  (canonically ordered)
+3. hash = SHA-512(input), iterated 5200 times
+4. Output: 120-digit decimal string derived from the final hash bytes
 ```
 
-Displayed in Contact Detail screen for manual out-of-band verification.
+**Key rotation detection** (`SafetyNumberManager`):
+
+- `MeshCipherApplication.checkAllSafetyNumbers()` recomputes safety numbers for all contacts at startup
+- If `currentSafetyNumber` differs from `verifiedSafetyNumber`, the contact is flagged as changed
+- A warning banner appears in ChatScreen; ContactDetailScreen shows a red verify button
+- `safetyNumberChangedAt` records when the mismatch was first detected
+
+**Verification UI**: `VerifySafetyNumberScreen` displays both numbers for side-by-side comparison. On confirmation, `verifiedSafetyNumber` is updated to match `currentSafetyNumber` and the warning is cleared.
 
 ## 3. Data at Rest Encryption
 

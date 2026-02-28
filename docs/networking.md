@@ -26,6 +26,19 @@ The relay server URL is configurable per-device via Settings > Relay Server. The
 
 See [Self-Hosting](self_hosting.md) for relay server setup instructions.
 
+## Smart Mode
+
+Smart Mode (`SmartModeManager`) is an automatic transport selection layer that sits on top of the user's configured `ConnectionMode`.
+
+- **Enabled by default** (`AppPreferences.SMART_MODE_ENABLED = true`)
+- **`preferTor`** flag (`AppPreferences.PREFER_TOR`, default `false`) biases the internet transport choice toward Tor Relay
+- **`ActiveTransport`** enum tracks which transport was last used successfully; exposed as `StateFlow<ActiveTransport>` and surfaced in `ChatViewModel.activeTransportLabel`
+- **`reportTransportUsed(transport)`** updates the active transport after each successful send
+- **`NetworkMonitor`** subscribes to `ConnectivityManager` network callbacks and emits `StateFlow<Boolean>` (hasInternet)
+- **`OfflineQueueManager`** holds an in-memory message queue; fires a `retryTrigger` SharedFlow when connectivity is restored so `TransportManager` can flush the queue
+
+When Smart Mode is disabled, `TransportManager` falls back to the static priority order defined by the user's `ConnectionMode`.
+
 ## Transport Priority per Mode
 
 ### `DIRECT` / `TOR_RELAY`

@@ -15,6 +15,15 @@ kotlin {
         }
     }
 
+    // Desktop JVM target
+    jvm("desktop") {
+        compilations.all {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+    }
+
     // iOS targets - uncomment when building on macOS with Xcode installed
     // listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach {
     //     it.binaries.framework { baseName = "shared"; isStatic = true }
@@ -30,6 +39,12 @@ kotlin {
         androidMain.dependencies {
             implementation("androidx.core:core-ktx:1.12.0")
             implementation("org.signal:libsignal-android:0.44.0")
+        }
+
+        val desktopMain by getting {
+            dependencies {
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.7.3")
+            }
         }
     }
 }
