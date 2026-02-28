@@ -117,7 +117,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.5")
+    implementation("androidx.navigation:navigation-compose:2.9.7")
 
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
