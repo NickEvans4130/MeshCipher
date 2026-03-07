@@ -37,7 +37,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@89a39a4e59826350b863aa6b6252a07ad50cf83e # v3.28.14
+        uses: github/codeql-action/init@0d579ffd059c29b07949a3cce3983f0780820c98 # v3.28.14
         with:
           languages: java-kotlin
           queries: security-and-quality
@@ -48,6 +48,6 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME }}
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@89a39a4e59826350b863aa6b6252a07ad50cf83e # v3.28.14
+        uses: github/codeql-action/analyze@0d579ffd059c29b07949a3cce3983f0780820c98 # v3.28.14
         with:
           category: language:java-kotlin
