@@ -27,7 +27,9 @@ import java.util.Base64
 data class LinkedPhone(
     val deviceId: String,
     val deviceName: String,
-    val linkedAt: Long
+    val linkedAt: Long,
+    val phoneUserId: String = "",
+    val phonePublicKeyHex: String = ""
 )
 
 object DeviceLinkManager {
@@ -83,6 +85,7 @@ object DeviceLinkManager {
                 it[DeviceLinksTable.publicKeyHex] = pubKeyHex
                 it[DeviceLinksTable.linkedAt] = System.currentTimeMillis()
                 it[DeviceLinksTable.approved] = true
+                it[DeviceLinksTable.phoneUserId] = response.phoneUserId
             }
         }
         _deviceLinked.emit(Unit)
@@ -109,7 +112,9 @@ object DeviceLinkManager {
                     LinkedPhone(
                         deviceId = row[DeviceLinksTable.deviceId],
                         deviceName = row[DeviceLinksTable.deviceName],
-                        linkedAt = row[DeviceLinksTable.linkedAt]
+                        linkedAt = row[DeviceLinksTable.linkedAt],
+                        phoneUserId = row[DeviceLinksTable.phoneUserId],
+                        phonePublicKeyHex = row[DeviceLinksTable.publicKeyHex]
                     )
                 }
         }
@@ -129,12 +134,22 @@ object DeviceLinkManager {
      * as a contact. Encodes as:
      *   meshcipher://add?userId=<id>&publicKey=<base64>&deviceType=DESKTOP
      */
-    suspend fun generateContactQrImage(sizePx: Int = 300): BufferedImage = withContext(Dispatchers.IO) {
-        val userId = getDesktopUserId()
-        val pubKey = if (keyManager.hasHardwareKey()) keyManager.getPublicKey()
-                     else keyManager.generateHardwareKey()
-        val pubKeyB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(pubKey)
-        val uri = "meshcipher://add?userId=$userId&publicKey=$pubKeyB64&deviceType=DESKTOP"
+    /**
+     * Generates a contact QR. If the phone is linked, encodes the phone's identity so
+     * contacts scan to add the user's real account. Falls back to desktop identity if not linked.
+     */
+    suspend fun generateContactQrImage(sizePx: Int = 300, linkedPhone: LinkedPhone? = null): BufferedImage = withContext(Dispatchers.IO) {
+        val uri = if (linkedPhone != null && linkedPhone.phoneUserId.isNotBlank() && linkedPhone.phonePublicKeyHex.isNotBlank()) {
+            val pubKeyBytes = linkedPhone.phonePublicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val pubKeyB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(pubKeyBytes)
+            "meshcipher://add?userId=${linkedPhone.phoneUserId}&publicKey=$pubKeyB64&deviceType=ANDROID"
+        } else {
+            val userId = getDesktopUserId()
+            val pubKey = if (keyManager.hasHardwareKey()) keyManager.getPublicKey()
+                         else keyManager.generateHardwareKey()
+            val pubKeyB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(pubKey)
+            "meshcipher://add?userId=$userId&publicKey=$pubKeyB64&deviceType=DESKTOP"
+        }
         val hints = mapOf(EncodeHintType.MARGIN to 1)
         val matrix = MultiFormatWriter().encode(uri, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
         MatrixToImageWriter.toBufferedImage(matrix)

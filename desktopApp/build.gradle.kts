@@ -61,7 +61,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)
             packageName = "MeshCipher"
-            packageVersion = "1.0.0"
+            packageVersion = "1.0.1"
             description = "Encrypted peer-to-peer messenger"
             vendor = "MeshCipher"
 

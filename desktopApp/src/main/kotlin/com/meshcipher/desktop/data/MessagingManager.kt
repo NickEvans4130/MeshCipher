@@ -41,6 +41,14 @@ class MessagingManager(
 
     init {
         scope.launch { listenForIncoming() }
+        scope.launch { pollLoop() }
+    }
+
+    private suspend fun pollLoop() {
+        while (true) {
+            runCatching { relay.pollQueuedMessages() }
+            kotlinx.coroutines.delay(30_000L)
+        }
     }
 
     suspend fun sendMessage(content: String, recipientId: String): Result<DesktopMessage> =

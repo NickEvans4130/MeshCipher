@@ -130,6 +130,9 @@ class RelayTransport(
         session.send(Frame.Text(json.encodeToString(msg)))
     }
 
+    /** Exposed so MessagingManager can call this on a polling timer. */
+    suspend fun pollQueuedMessages() = fetchQueuedMessages()
+
     private suspend fun connectWithBackoff() {
         var delayMs = 1_000L
         while (true) {

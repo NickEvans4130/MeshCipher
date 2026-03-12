@@ -46,7 +46,7 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
     var contactQr by remember { mutableStateOf<ImageBitmap?>(null) }
     var contactQrLoading by remember { mutableStateOf(true) }
 
-    var desktopUserId by remember { mutableStateOf("") }
+    var displayUserId by remember { mutableStateOf("") }
     var linkedPhone by remember { mutableStateOf<LinkedPhone?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
 
@@ -58,19 +58,24 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
         pairingQrLoading = false
     }
 
-    suspend fun loadContactQr() {
+    suspend fun loadContactQr(phone: LinkedPhone?) {
         contactQrLoading = true
         contactQr = null
-        runCatching { DeviceLinkManager.generateContactQrImage(280).toComposeImageBitmap() }
+        runCatching { DeviceLinkManager.generateContactQrImage(280, phone).toComposeImageBitmap() }
             .onSuccess { contactQr = it }
         contactQrLoading = false
     }
 
     LaunchedEffect(refreshKey) {
-        desktopUserId = DeviceLinkManager.getDesktopUserId()
-        linkedPhone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+        val phone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+        linkedPhone = phone
+        displayUserId = if (phone != null && phone.phoneUserId.isNotBlank()) {
+            phone.phoneUserId
+        } else {
+            DeviceLinkManager.getDesktopUserId()
+        }
         loadPairingQr()
-        loadContactQr()
+        loadContactQr(phone)
     }
 
     LaunchedEffect(Unit) {
@@ -207,7 +212,7 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = desktopUserId,
+                        text = displayUserId,
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         fontFamily = Monospace,
