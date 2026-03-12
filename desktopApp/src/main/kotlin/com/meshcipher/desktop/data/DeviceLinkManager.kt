@@ -9,6 +9,9 @@ import com.meshcipher.shared.domain.model.DeviceType
 import com.meshcipher.shared.util.generateUUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -31,6 +34,9 @@ object DeviceLinkManager {
 
     private val keyManager = KeyManager()
     private val deviceId: String = loadOrCreateDeviceId()
+
+    private val _deviceLinked = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val deviceLinked: SharedFlow<Unit> = _deviceLinked.asSharedFlow()
 
     val localDeviceId: String get() = deviceId
 
@@ -79,6 +85,7 @@ object DeviceLinkManager {
                 it[DeviceLinksTable.approved] = true
             }
         }
+        _deviceLinked.emit(Unit)
     }
 
     /**

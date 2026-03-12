@@ -73,6 +73,10 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
         loadContactQr()
     }
 
+    LaunchedEffect(Unit) {
+        DeviceLinkManager.deviceLinked.collect { refreshKey++ }
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
         // Header
         Row(
