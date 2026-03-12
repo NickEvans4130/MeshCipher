@@ -104,7 +104,19 @@ class MessagingManager(
         val response = runCatching {
             json.decodeFromString<DeviceLinkResponse>(String(bytes))
         }.getOrNull() ?: return
-        scope.launch { DeviceLinkManager.processLinkResponse(response) }
+        scope.launch {
+            DeviceLinkManager.processLinkResponse(response)
+            // Add the phone itself as a contact so incoming messages can be matched
+            val pubKeyHex = response.phonePublicKeyHex
+            if (response.approved && pubKeyHex != null) {
+                ContactRepository.upsertContact(
+                    contactId = response.phoneUserId,
+                    displayName = "My Phone",
+                    publicKeyHex = pubKeyHex
+                )
+                _contactsUpdated.emit(Unit)
+            }
+        }
     }
 
     private suspend fun handleContactSync(bytes: ByteArray) {
@@ -123,7 +135,18 @@ class MessagingManager(
     }
 
     private suspend fun handleMessage(senderId: String, payloadBytes: ByteArray, @Suppress("UNUSED_PARAMETER") rawPayload: String) {
-        val contact = ContactRepository.getContact(senderId) ?: return
+        // Auto-register unknown sender if it matches the linked phone
+        var contact = ContactRepository.getContact(senderId)
+        if (contact == null) {
+            val linkedPhone = DeviceLinkManager.getApprovedDevices()
+                .firstOrNull { it.phoneUserId == senderId } ?: return
+            ContactRepository.upsertContact(
+                contactId = senderId,
+                displayName = "My Phone",
+                publicKeyHex = linkedPhone.phonePublicKeyHex
+            )
+            contact = ContactRepository.getContact(senderId) ?: return
+        }
 
         // Try as MessageEnvelope (ECDH-encrypted, desktop→desktop)
         val payloadJson = String(payloadBytes)
