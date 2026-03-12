@@ -19,6 +19,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 fun main() {
+    // Single-instance lock — exit immediately if another instance is already running
+    val lockFile = com.meshcipher.desktop.platform.DesktopPlatform.configDir.resolve(".lock")
+    val lockChannel = java.nio.channels.FileChannel.open(
+        lockFile.toPath(),
+        java.nio.file.StandardOpenOption.CREATE,
+        java.nio.file.StandardOpenOption.WRITE
+    )
+    val lock = lockChannel.tryLock()
+    if (lock == null) {
+        System.err.println("MeshCipher is already running.")
+        return
+    }
+    Runtime.getRuntime().addShutdownHook(Thread { lock.release(); lockChannel.close() })
+
     AppDatabase.init()
 
     val keyManager = KeyManager()
