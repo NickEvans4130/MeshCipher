@@ -43,8 +43,9 @@ fun main() {
                 val relayUrl = config["relayUrl"]
                 val authToken = config["authToken"]
                 if (!relayUrl.isNullOrBlank() && !authToken.isNullOrBlank()) {
-                    val r = RelayTransport(relayUrl, localDeviceId, authToken).also { it.connect() }
-                    val crypto = MessageCrypto(localDeviceId, keyManager)
+                    val localUserId = DeviceLinkManager.getDesktopUserId()
+                    val r = RelayTransport(relayUrl, localDeviceId, authToken, localUserId).also { it.connect() }
+                    val crypto = MessageCrypto(localUserId, keyManager)
                     relay = r
                     messagingManager = MessagingManager(localDeviceId, crypto, r)
                 }
