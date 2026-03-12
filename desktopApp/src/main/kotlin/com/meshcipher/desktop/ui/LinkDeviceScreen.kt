@@ -1,12 +1,17 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.meshcipher.desktop.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,38 +23,58 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meshcipher.desktop.data.DeviceLinkManager
+import com.meshcipher.desktop.data.LinkedPhone
 import kotlinx.coroutines.launch
 import java.awt.image.BufferedImage
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun LinkDeviceScreen(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
-    var qrImage by remember { mutableStateOf<ImageBitmap?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var deviceId by remember { mutableStateOf("") }
 
-    suspend fun generateQr() {
-        isLoading = true
-        qrImage = null
-        try {
-            val buf: BufferedImage = DeviceLinkManager.generateQrImage(360)
-            qrImage = buf.toComposeImageBitmap()
-        } catch (_: Exception) { }
-        isLoading = false
+    // Pairing QR (phone scans to link)
+    var pairingQr by remember { mutableStateOf<ImageBitmap?>(null) }
+    var pairingQrLoading by remember { mutableStateOf(true) }
+
+    // Contact QR (contacts scan to add this desktop)
+    var contactQr by remember { mutableStateOf<ImageBitmap?>(null) }
+    var contactQrLoading by remember { mutableStateOf(true) }
+
+    var desktopUserId by remember { mutableStateOf("") }
+    var linkedPhone by remember { mutableStateOf<LinkedPhone?>(null) }
+    var refreshKey by remember { mutableStateOf(0) }
+
+    suspend fun loadPairingQr() {
+        pairingQrLoading = true
+        pairingQr = null
+        runCatching { DeviceLinkManager.generateQrImage(320).toComposeImageBitmap() }
+            .onSuccess { pairingQr = it }
+        pairingQrLoading = false
     }
 
-    LaunchedEffect(Unit) {
-        deviceId = DeviceLinkManager.localDeviceId
-        generateQr()
+    suspend fun loadContactQr() {
+        contactQrLoading = true
+        contactQr = null
+        runCatching { DeviceLinkManager.generateContactQrImage(280).toComposeImageBitmap() }
+            .onSuccess { contactQr = it }
+        contactQrLoading = false
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(Background)
-    ) {
-        // Header with back button
+    LaunchedEffect(refreshKey) {
+        desktopUserId = DeviceLinkManager.getDesktopUserId()
+        linkedPhone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+        loadPairingQr()
+        loadContactQr()
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(Background)) {
+        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -62,7 +87,7 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
             }
             Spacer(Modifier.width(4.dp))
             Text(
-                text = "LINK DEVICE",
+                "DEVICE",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Accent,
@@ -70,108 +95,275 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
             )
             Spacer(Modifier.weight(1f))
             IconButton(
-                onClick = { scope.launch { generateQr() } },
-                enabled = !isLoading
+                onClick = { refreshKey++ },
+                enabled = !pairingQrLoading && !contactQrLoading
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh QR", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Refresh",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
+        HorizontalDivider(color = Divider, thickness = 1.dp)
 
-        // Content
-        Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        // Two-column layout
+        Row(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text(
-                text = "LINK YOUR PHONE",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                letterSpacing = 2.sp
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = "On your Android phone: Settings → Linked Devices → tap + → scan this QR code.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(max = 380.dp)
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // QR code frame
-            Box(
-                modifier = Modifier
-                    .size(380.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .border(2.dp, Accent, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
+            // ── Left: Linked phone status ─────────────────────────────────
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                when {
-                    isLoading -> CircularProgressIndicator(
-                        color = Accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(40.dp)
+                SectionLabel("LINKED PHONE")
+                Spacer(Modifier.height(16.dp))
+
+                if (linkedPhone != null) {
+                    LinkedPhoneCard(
+                        phone = linkedPhone!!,
+                        onUnlink = {
+                            scope.launch {
+                                DeviceLinkManager.unlinkDevice(linkedPhone!!.deviceId)
+                                refreshKey++
+                            }
+                        }
                     )
-                    qrImage != null -> Image(
-                        bitmap = qrImage!!,
-                        contentDescription = "Device link QR code",
-                        modifier = Modifier.fillMaxSize().padding(12.dp)
-                    )
-                    else -> Text(
-                        "QR generation failed",
+                } else {
+                    // Not linked yet — show pairing QR
+                    Text(
+                        "Scan this QR code from your Android phone to link it.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = ErrorRed
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 300.dp)
                     )
+                    Spacer(Modifier.height(16.dp))
+                    QrFrame(bitmap = pairingQr, loading = pairingQrLoading, size = 280.dp)
+                    Spacer(Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier.widthIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        StepRow(1, "Open MeshCipher on Android")
+                        StepRow(2, "Settings → Linked Devices → +")
+                        StepRow(3, "Scan this QR code")
+                        StepRow(4, "Approve on your phone")
+                    }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-
-            // Device ID display
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            // Vertical divider
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Surface)
-                    .border(1.dp, Divider, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Divider)
+            )
+
+            // ── Right: Desktop identity + contact QR ─────────────────────
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                SectionLabel("YOUR IDENTITY")
+                Spacer(Modifier.height(16.dp))
+
                 Text(
-                    text = "DEVICE ID",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Accent,
-                    letterSpacing = 2.sp,
-                    fontFamily = Monospace
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = deviceId,
+                    "Share this QR so contacts can add you, or give them your User ID directly.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
-                    fontFamily = Monospace
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 300.dp)
                 )
-            }
+                Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(24.dp))
+                QrFrame(bitmap = contactQr, loading = contactQrLoading, size = 240.dp)
 
-            // Instruction steps
-            Column(
-                modifier = Modifier.widthIn(max = 380.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                StepRow(1, "Open MeshCipher on your phone")
-                StepRow(2, "Go to Settings → Linked Devices")
-                StepRow(3, "Tap + and scan this QR code")
-                StepRow(4, "Approve the link on your phone")
-                StepRow(5, "Contacts will sync automatically")
+                Spacer(Modifier.height(16.dp))
+
+                // User ID chip
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Surface)
+                        .border(1.dp, Divider, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .widthIn(max = 300.dp)
+                ) {
+                    Text(
+                        "USER ID",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Accent,
+                        letterSpacing = 2.sp,
+                        fontFamily = Monospace
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = desktopUserId,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        fontFamily = Monospace,
+                        maxLines = 2
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = Accent,
+        letterSpacing = 2.sp,
+        fontFamily = Monospace
+    )
+}
+
+@Composable
+private fun QrFrame(
+    bitmap: ImageBitmap?,
+    loading: Boolean,
+    size: androidx.compose.ui.unit.Dp
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(2.dp, Accent, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            loading -> CircularProgressIndicator(
+                color = Accent,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(36.dp)
+            )
+            bitmap != null -> Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(10.dp)
+            )
+            else -> Text("QR error", style = MaterialTheme.typography.bodySmall, color = ErrorRed)
+        }
+    }
+}
+
+@Composable
+private fun LinkedPhoneCard(phone: LinkedPhone, onUnlink: () -> Unit) {
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+
+    Column(
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Surface)
+            .border(1.dp, Accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Connected indicator
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "LINKED",
+                style = MaterialTheme.typography.labelMedium,
+                color = Accent,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                fontFamily = Monospace
+            )
+        }
+
+        HorizontalDivider(color = Divider, thickness = 1.dp)
+
+        // Phone avatar + name
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(AccentDim),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+
+        Text(
+            text = phone.deviceName,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        // Device ID
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(SurfaceElevated)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Text(
+                "DEVICE ID",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                letterSpacing = 1.sp,
+                fontFamily = Monospace
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = phone.deviceId.take(24) + "…",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                fontFamily = Monospace
+            )
+        }
+
+        // Linked date
+        Text(
+            text = "Linked ${dateFormat.format(Date(phone.linkedAt))}",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextTertiary
+        )
+
+        // Unlink button
+        OutlinedButton(
+            onClick = onUnlink,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+            border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(6.dp)
+        ) {
+            Text(
+                "UNLINK",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                fontFamily = Monospace
+            )
         }
     }
 }
@@ -182,12 +374,12 @@ private fun StepRow(number: Int, text: String) {
         Box(
             modifier = Modifier
                 .size(20.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
+                .clip(CircleShape)
                 .background(AccentDim),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = number.toString(),
+                number.toString(),
                 style = MaterialTheme.typography.labelSmall,
                 color = Accent,
                 fontWeight = FontWeight.Bold,

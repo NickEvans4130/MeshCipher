@@ -11,10 +11,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.awt.image.BufferedImage
+import java.security.MessageDigest
 import java.util.Base64
+
+data class LinkedPhone(
+    val deviceId: String,
+    val deviceName: String,
+    val linkedAt: Long
+)
 
 object DeviceLinkManager {
 
@@ -68,6 +79,58 @@ object DeviceLinkManager {
                 it[DeviceLinksTable.approved] = true
             }
         }
+    }
+
+    /**
+     * Derives the desktop's userId from its public key.
+     * Algorithm matches Android IdentityManager: Base64Url(SHA-256(publicKey)).take(32)
+     */
+    fun getDesktopUserId(): String {
+        val pubKey = if (keyManager.hasHardwareKey()) keyManager.getPublicKey()
+                     else keyManager.generateHardwareKey()
+        val hash = MessageDigest.getInstance("SHA-256").digest(pubKey)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+    }
+
+    /**
+     * Returns all approved linked devices (phones that have approved this desktop).
+     */
+    suspend fun getApprovedDevices(): List<LinkedPhone> = withContext(Dispatchers.IO) {
+        transaction {
+            DeviceLinksTable.select { DeviceLinksTable.approved eq true }
+                .map { row ->
+                    LinkedPhone(
+                        deviceId = row[DeviceLinksTable.deviceId],
+                        deviceName = row[DeviceLinksTable.deviceName],
+                        linkedAt = row[DeviceLinksTable.linkedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * Removes a linked device by its deviceId.
+     */
+    suspend fun unlinkDevice(linkedDeviceId: String) = withContext(Dispatchers.IO) {
+        transaction {
+            DeviceLinksTable.deleteWhere { DeviceLinksTable.deviceId eq linkedDeviceId }
+        }
+    }
+
+    /**
+     * Generates a QR code that other MeshCipher users can scan to add this desktop
+     * as a contact. Encodes as:
+     *   meshcipher://add?userId=<id>&publicKey=<base64>&deviceType=DESKTOP
+     */
+    suspend fun generateContactQrImage(sizePx: Int = 300): BufferedImage = withContext(Dispatchers.IO) {
+        val userId = getDesktopUserId()
+        val pubKey = if (keyManager.hasHardwareKey()) keyManager.getPublicKey()
+                     else keyManager.generateHardwareKey()
+        val pubKeyB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(pubKey)
+        val uri = "meshcipher://add?userId=$userId&publicKey=$pubKeyB64&deviceType=DESKTOP"
+        val hints = mapOf(EncodeHintType.MARGIN to 1)
+        val matrix = MultiFormatWriter().encode(uri, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
+        MatrixToImageWriter.toBufferedImage(matrix)
     }
 
     private fun loadOrCreateDeviceId(): String {
