@@ -12,6 +12,8 @@ import com.meshcipher.shared.domain.model.DeviceLinkResponse
 import com.meshcipher.shared.domain.model.DeviceType
 import com.meshcipher.shared.domain.model.LinkedDevice
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.security.MessageDigest
+import java.util.Base64
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,16 +72,17 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                     phoneUserId = identity.userId,
                     phonePublicKeyHex = phonePublicKeyHex
                 )
+                val desktopUserId = userIdFromPublicKeyHex(request.publicKeyHex)
                 internetTransport.sendMessage(
                     senderId = identity.userId,
-                    recipientId = request.deviceId,
+                    recipientId = desktopUserId,
                     encryptedContent = gson.toJson(response).toByteArray(),
                     contentType = 10
                 )
 
                 // Push all contacts to the desktop so they appear immediately
                 sendContactSync(
-                    desktopDeviceId = request.deviceId,
+                    desktopDeviceId = desktopUserId,
                     senderUserId = identity.userId
                 )
             }.fold(
@@ -104,7 +107,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                 )
                 internetTransport.sendMessage(
                     senderId = identity.userId,
-                    recipientId = request.deviceId,
+                    recipientId = userIdFromPublicKeyHex(request.publicKeyHex),
                     encryptedContent = gson.toJson(response).toByteArray(),
                     contentType = 10
                 )
@@ -138,5 +141,11 @@ class DeviceLinkApprovalViewModel @Inject constructor(
             encryptedContent = payloadBytes,
             contentType = 11
         )
+    }
+
+    private fun userIdFromPublicKeyHex(publicKeyHex: String): String {
+        val pubKeyBytes = publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val hash = MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
     }
 }

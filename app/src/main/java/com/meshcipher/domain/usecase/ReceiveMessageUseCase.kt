@@ -5,6 +5,7 @@ import android.util.Base64
 import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.remote.dto.QueuedMessage
+import com.meshcipher.data.service.MessageForwardingService
 import com.meshcipher.data.transport.TransportManager
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaMessageEnvelope
@@ -27,6 +28,7 @@ class ReceiveMessageUseCase @Inject constructor(
     private val transportManager: TransportManager,
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
+    private val forwardingService: MessageForwardingService,
     @ApplicationContext private val context: Context
 ) {
 
@@ -119,6 +121,7 @@ class ReceiveMessageUseCase @Inject constructor(
 
         messageRepository.insertMessage(message)
         conversationRepository.incrementUnreadCount(conversationId)
+        forwardingService.forwardIncomingToLinkedDevices(queued.senderId, contentBytes)
 
         Timber.d("Received message from %s in conversation %s",
             senderContact.displayName, conversationId)

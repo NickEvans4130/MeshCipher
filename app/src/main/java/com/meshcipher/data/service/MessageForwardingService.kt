@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.security.MessageDigest
+import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,7 +43,7 @@ class MessageForwardingService @Inject constructor(
             runCatching {
                 internetTransport.sendMessage(
                     senderId = identity.userId,
-                    recipientId = device.deviceId,
+                    recipientId = userIdFromPublicKeyHex(device.publicKeyHex),
                     encryptedContent = encryptedContent,
                     contentType = contentType
                 )
@@ -69,7 +71,7 @@ class MessageForwardingService @Inject constructor(
             runCatching {
                 internetTransport.sendMessage(
                     senderId = fromUserId,
-                    recipientId = device.deviceId,
+                    recipientId = userIdFromPublicKeyHex(device.publicKeyHex),
                     encryptedContent = encryptedContent,
                     contentType = contentType
                 )
@@ -77,5 +79,12 @@ class MessageForwardingService @Inject constructor(
                 Timber.w(e, "Failed to forward incoming message to linked device %s", device.deviceId)
             }
         }
+    }
+
+    /** Derives the relay user_id from a device's public key hex (matches desktop IdentityManager). */
+    private fun userIdFromPublicKeyHex(publicKeyHex: String): String {
+        val pubKeyBytes = publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val hash = MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
     }
 }

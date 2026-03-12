@@ -1,5 +1,6 @@
 package com.meshcipher.domain.usecase
 
+import com.meshcipher.data.service.MessageForwardingService
 import com.meshcipher.data.transport.TransportManager
 import com.meshcipher.domain.model.Message
 import com.meshcipher.domain.model.MessageStatus
@@ -14,7 +15,8 @@ class SendMessageUseCase @Inject constructor(
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val contactRepository: ContactRepository,
-    private val transportManager: TransportManager
+    private val transportManager: TransportManager,
+    private val forwardingService: MessageForwardingService
 ) {
 
     suspend operator fun invoke(
@@ -52,6 +54,7 @@ class SendMessageUseCase @Inject constructor(
         return if (sendResult.isSuccess) {
             val sentMessage = message.copy(status = MessageStatus.SENT)
             messageRepository.updateMessageStatus(message.id, MessageStatus.SENT)
+            forwardingService.forwardToLinkedDevices(content.toByteArray())
             Timber.d("Message sent: %s", message.id)
             Result.success(sentMessage)
         } else {

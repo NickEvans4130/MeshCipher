@@ -123,16 +123,18 @@ class MessagingManager(
 
         val plaintext = if (envelope != null) {
             runCatching { crypto.decryptMessage(envelope, contact.publicKeyHex) }.getOrNull()
+                ?: return // Decryption failed — wrong key or corrupted
         } else {
-            null
-        } ?: return // Can't decrypt (e.g. Signal-encrypted from phone without session key)
+            // Phone forwarding sends plaintext bytes; treat as UTF-8 text directly
+            payloadJson.trim().ifBlank { return }
+        }
 
         val msg = MessageRepository.save(
             contactId = senderId,
             content = plaintext,
             isOutgoing = false,
             status = "delivered",
-            timestamp = envelope!!.timestamp
+            timestamp = envelope?.timestamp ?: System.currentTimeMillis()
         )
         _newMessages.emit(msg)
 
