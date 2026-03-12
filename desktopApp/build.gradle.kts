@@ -61,9 +61,11 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)
             packageName = "MeshCipher"
-            packageVersion = "0.12.0"
+            packageVersion = "1.0.0"
             description = "Encrypted peer-to-peer messenger"
             vendor = "MeshCipher"
+
+            modules("java.sql", "java.naming", "java.security.jgss", "jdk.security.auth")
 
             linux {
                 iconFile.set(project.file("src/main/resources/icon.png"))
