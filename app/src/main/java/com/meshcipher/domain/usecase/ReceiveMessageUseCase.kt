@@ -188,6 +188,14 @@ class ReceiveMessageUseCase @Inject constructor(
 
         messageRepository.insertMessage(message)
         conversationRepository.incrementUnreadCount(conversationId)
+        forwardingService.forwardMediaToLinkedDevices(
+            fileName = envelope.fileName,
+            mimeType = envelope.mimeType,
+            fileBytes = decryptedBytes,
+            contactId = senderContact.id,
+            contactName = senderContact.displayName,
+            isOutgoing = false
+        )
 
         Timber.d("Received media (%s) from %s in conversation %s",
             mediaType, senderContact.displayName, conversationId)

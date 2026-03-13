@@ -1,7 +1,12 @@
 package com.meshcipher.desktop.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.meshcipher.desktop.data.SettingsRepository
+import com.meshcipher.desktop.network.RelayState
+import com.meshcipher.desktop.network.RelayTransport
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
@@ -24,15 +29,27 @@ import javax.imageio.ImageIO
 @Composable
 fun ApplicationScope.MeshCipherTray(
     trayState: TrayState = rememberTrayState(),
+    relay: RelayTransport? = null,
     onShow: () -> Unit,
     onQuit: () -> Unit
 ) {
     val icon = rememberTrayIcon()
+    val relayState by (relay?.state ?: kotlinx.coroutines.flow.MutableStateFlow(RelayState.DISCONNECTED))
+        .collectAsState()
+    val torEnabled by SettingsRepository.torEnabled.collectAsState()
+
+    val tooltip = when {
+        relayState == RelayState.CONNECTED && torEnabled -> "MeshCipher — TOR active"
+        relayState == RelayState.CONNECTED               -> "MeshCipher — connected"
+        relayState == RelayState.TOR_UNAVAILABLE         -> "MeshCipher — TOR unavailable"
+        relayState == RelayState.CONNECTING              -> "MeshCipher — connecting..."
+        else                                             -> "MeshCipher — disconnected"
+    }
 
     Tray(
         state = trayState,
         icon = icon,
-        tooltip = "MeshCipher"
+        tooltip = tooltip
     ) {
         Item("Show MeshCipher", onClick = onShow)
         Separator()
