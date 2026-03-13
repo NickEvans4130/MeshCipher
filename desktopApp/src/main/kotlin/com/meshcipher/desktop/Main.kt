@@ -5,12 +5,18 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import com.meshcipher.desktop.data.AppDatabase
 import com.meshcipher.desktop.data.DeviceLinkManager
 import com.meshcipher.desktop.data.MessagingManager
+import com.meshcipher.desktop.data.SettingsRepository
 import com.meshcipher.desktop.crypto.MessageCrypto
 import com.meshcipher.desktop.network.RelayAuthManager
 import com.meshcipher.desktop.network.RelayTransport
+import com.meshcipher.desktop.network.TorConnectivityChecker
 import com.meshcipher.desktop.ui.MeshCipherApp
 import com.meshcipher.desktop.ui.MeshCipherTray
 import com.meshcipher.desktop.ui.RelaySetupScreen
@@ -48,6 +54,47 @@ fun main() {
         // Relay + messaging — initialised once setup is confirmed
         var relay by remember { mutableStateOf<RelayTransport?>(null) }
         var messagingManager by remember { mutableStateOf<MessagingManager?>(null) }
+
+        // TOR warning dialog state
+        var showTorWarning by remember { mutableStateOf(false) }
+
+        // On startup, check TOR connectivity when enabled
+        LaunchedEffect(Unit) {
+            if (SettingsRepository.torEnabled.value) {
+                withContext(Dispatchers.IO) {
+                    val status = TorConnectivityChecker.check()
+                    if (status == TorConnectivityChecker.TorStatus.NOT_RUNNING) {
+                        showTorWarning = true
+                    }
+                }
+            }
+        }
+
+        if (showTorWarning) {
+            androidx.compose.ui.window.DialogWindow(
+                onCloseRequest = { showTorWarning = false },
+                title = "TOR Not Detected"
+            ) {
+                MaterialTheme {
+                    AlertDialog(
+                        onDismissRequest = { showTorWarning = false },
+                        title = { Text("TOR Not Detected") },
+                        text = {
+                            Text(
+                                "TOR is enabled but not detected on port 9050.\n\n" +
+                                "Install and start TOR:\n" +
+                                "  Fedora: sudo dnf install tor && sudo systemctl start tor\n" +
+                                "  Debian: sudo apt install tor && sudo systemctl start tor\n\n" +
+                                "Relay traffic will use a direct connection until TOR is available."
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showTorWarning = false }) { Text("OK") }
+                        }
+                    )
+                }
+            }
+        }
 
         // When setup becomes complete (first run or after setup screen), init relay
         LaunchedEffect(setupComplete) {

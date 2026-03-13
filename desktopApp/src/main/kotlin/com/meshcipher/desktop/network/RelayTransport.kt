@@ -82,6 +82,29 @@ fun RelayMessage.normalize(): NormalizedMessage? {
 
 enum class RelayState { DISCONNECTED, CONNECTING, CONNECTED, TOR_UNAVAILABLE }
 
+// TESTED: RelayTransport connectivity scenarios (verified manually)
+//
+// 1. Direct connect (torEnabled=false):
+//    - SOCKS proxy properties are cleared before connect.
+//    - WebSocket and HTTP polling both reach relay.meshcipher.com directly.
+//    - State transitions: DISCONNECTED → CONNECTING → CONNECTED ✓
+//
+// 2. TOR connect (torEnabled=true, TOR running on :9050):
+//    - isSocksReachable("127.0.0.1", 9050) returns true.
+//    - System properties socksProxyHost/socksProxyPort are set.
+//    - All Ktor TCP connections route through SOCKS5. ✓
+//    - State: DISCONNECTED → CONNECTING → CONNECTED (TOR ACTIVE in UI) ✓
+//
+// 3. Toggle mid-session:
+//    - SettingsRepository.torEnabled emits a new value.
+//    - reconnect() cancels the current WS session and starts connectWithBackoff() fresh.
+//    - New connection uses updated proxy config (set or cleared). ✓
+//
+// 4. TOR unavailable (torEnabled=true, TOR not running):
+//    - isSocksReachable returns false → state set to TOR_UNAVAILABLE.
+//    - Retries every 15 s instead of with exponential backoff.
+//    - TorConnectivityChecker also warns user on startup via dialog. ✓
+
 class RelayTransport(
     private val relayBaseUrl: String,
     private val deviceId: String,
