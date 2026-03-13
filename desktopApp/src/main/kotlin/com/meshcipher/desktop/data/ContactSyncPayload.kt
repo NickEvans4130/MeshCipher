@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 const val CONTENT_TYPE_MESSAGE = 0
 const val CONTENT_TYPE_DEVICE_LINK = 10
 const val CONTENT_TYPE_CONTACT_SYNC = 11
+const val CONTENT_TYPE_FORWARDED = 12
+const val CONTENT_TYPE_DEVICE_UNLINK = 13
 
 @Serializable
 data class ContactSyncPayload(

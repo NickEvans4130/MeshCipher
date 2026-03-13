@@ -106,6 +106,10 @@ object ContactRepository {
             }
         }
 
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        transaction { ContactsTable.deleteAll() }
+    }
+
     private fun ResultRow.toDesktopContact() = DesktopContact(
         id = this[ContactsTable.id].value,
         contactId = this[ContactsTable.contactId],

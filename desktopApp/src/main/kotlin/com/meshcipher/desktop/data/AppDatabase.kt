@@ -29,6 +29,7 @@ object DeviceLinksTable : LongIdTable("device_links") {
     val publicKeyHex = varchar("public_key_hex", 512)
     val linkedAt = long("linked_at")
     val approved = bool("approved").default(false)
+    val phoneUserId = varchar("phone_user_id", 128).default("")
 }
 
 /** Persists ECDH / Signal Protocol session state per contact. */

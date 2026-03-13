@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.meshcipher.desktop.data.ContactRepository
 import com.meshcipher.desktop.data.DesktopContact
 import com.meshcipher.desktop.data.DesktopMessage
+import com.meshcipher.desktop.data.DeviceLinkManager
 import com.meshcipher.desktop.data.MessageRepository
 import com.meshcipher.desktop.data.MessagingManager
 import kotlinx.coroutines.launch
@@ -69,6 +70,16 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
                 }
             }
 
+            // When account is unlinked, clear UI state immediately
+            LaunchedEffect(Unit) {
+                DeviceLinkManager.dataCleared.collect {
+                    contactsRefreshKey++
+                    selectedContact = null
+                    inChat = false
+                    selectedNav = NavItem.CONVERSATIONS
+                }
+            }
+
             Row(modifier = Modifier.fillMaxSize()) {
                 // ── Sidebar ──
                 TacticalSidebar(
@@ -93,7 +104,8 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
                         onBack = {
                             selectedNav = NavItem.CONVERSATIONS
                             inChat = false
-                        }
+                        },
+                        messagingManager = messagingManager
                     )
 
                     inChat && selectedContact != null -> ChatPane(

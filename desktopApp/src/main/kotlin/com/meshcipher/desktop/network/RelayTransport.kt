@@ -5,6 +5,8 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
@@ -13,6 +15,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Flat format used for desktop→desktop relay messages sent via WebSocket.
@@ -80,6 +85,7 @@ class RelayTransport(
     private val relayBaseUrl: String,
     private val deviceId: String,
     private val authToken: String,
+    private val userId: String,
     private val torManager: TorManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -124,6 +130,20 @@ class RelayTransport(
         session.send(Frame.Text(json.encodeToString(msg)))
     }
 
+    /** Exposed so MessagingManager can call this on a polling timer. */
+    suspend fun pollQueuedMessages() = fetchQueuedMessages()
+
+    /** Send an arbitrary payload with a specific content_type via HTTP POST. */
+    suspend fun sendRawMessage(recipientId: String, payload: ByteArray, contentType: Int) {
+        val base = relayBaseUrl.trimEnd('/')
+        val encoded = java.util.Base64.getEncoder().encodeToString(payload)
+        client.post("$base/api/v1/relay/message") {
+            header(HttpHeaders.Authorization, "Bearer $authToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"sender_id":"$userId","recipient_id":"$recipientId","encrypted_content":"$encoded","content_type":$contentType}""")
+        }
+    }
+
     private suspend fun connectWithBackoff() {
         var delayMs = 1_000L
         while (true) {
@@ -150,6 +170,9 @@ class RelayTransport(
                     val authMsg = RelayMessage(type = "auth", token = authToken, senderId = deviceId)
                     send(Frame.Text(json.encodeToString(authMsg)))
 
+                    // Fetch any messages queued before this connection
+                    scope.launch { fetchQueuedMessages() }
+
                     for (frame in incoming) {
                         if (frame is Frame.Text) {
                             runCatching {
@@ -169,6 +192,52 @@ class RelayTransport(
             _state.value = RelayState.DISCONNECTED
             delay(delayMs)
             delayMs = (delayMs * 2).coerceAtMost(30_000L)
+        }
+    }
+
+    private suspend fun fetchQueuedMessages() {
+        val base = relayBaseUrl.trimEnd('/')
+        runCatching {
+            val response = client.get("$base/api/v1/relay/messages/$userId") {
+                header(HttpHeaders.Authorization, "Bearer $authToken")
+            }
+            if (!response.status.isSuccess()) return
+
+            val body = json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val messages = body["messages"]?.jsonArray ?: return
+            val ackIds = mutableListOf<String>()
+
+            for (element in messages) {
+                val obj = element.jsonObject
+                val id = obj["id"]?.jsonPrimitive?.content ?: continue
+                val senderId = obj["sender_id"]?.jsonPrimitive?.content ?: continue
+                val recipientId = obj["recipient_id"]?.jsonPrimitive?.content ?: ""
+                val encryptedContent = obj["encrypted_content"]?.jsonPrimitive?.content ?: continue
+                val contentType = obj["content_type"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+
+                val syntheticMsg = RelayMessage(
+                    type = "new_message",
+                    message = RelayPushBody(
+                        id = id,
+                        senderId = senderId,
+                        recipientId = recipientId,
+                        encryptedContent = encryptedContent,
+                        contentType = contentType
+                    )
+                )
+                _incomingMessages.emit(syntheticMsg)
+                ackIds.add(id)
+            }
+
+            if (ackIds.isNotEmpty()) {
+                runCatching {
+                    client.post("$base/api/v1/relay/messages/$userId/ack") {
+                        header(HttpHeaders.Authorization, "Bearer $authToken")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"message_ids":${ackIds.joinToString(",", "[", "]") { "\"$it\"" }}}""")
+                    }
+                }
+            }
         }
     }
 }
