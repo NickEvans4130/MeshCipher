@@ -76,6 +76,13 @@ object MessageRepository {
             }
         }
 
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        transaction {
+            MessagesTable.deleteAll()
+            SessionsTable.deleteAll()
+        }
+    }
+
     private fun ResultRow.toDesktopMessage() = DesktopMessage(
         id = this[MessagesTable.id].value,
         messageId = this[MessagesTable.messageId],

@@ -133,6 +133,17 @@ class RelayTransport(
     /** Exposed so MessagingManager can call this on a polling timer. */
     suspend fun pollQueuedMessages() = fetchQueuedMessages()
 
+    /** Send an arbitrary payload with a specific content_type via HTTP POST. */
+    suspend fun sendRawMessage(recipientId: String, payload: ByteArray, contentType: Int) {
+        val base = relayBaseUrl.trimEnd('/')
+        val encoded = java.util.Base64.getEncoder().encodeToString(payload)
+        client.post("$base/api/v1/relay/message") {
+            header(HttpHeaders.Authorization, "Bearer $authToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"sender_id":"$userId","recipient_id":"$recipientId","encrypted_content":"$encoded","content_type":$contentType}""")
+        }
+    }
+
     private suspend fun connectWithBackoff() {
         var delayMs = 1_000L
         while (true) {

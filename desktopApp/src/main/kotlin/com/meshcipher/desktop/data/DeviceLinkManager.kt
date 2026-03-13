@@ -40,6 +40,9 @@ object DeviceLinkManager {
     private val _deviceLinked = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val deviceLinked: SharedFlow<Unit> = _deviceLinked.asSharedFlow()
 
+    private val _dataCleared = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val dataCleared: SharedFlow<Unit> = _dataCleared.asSharedFlow()
+
     val localDeviceId: String get() = deviceId
 
     fun getPublicKeyHex(): String {
@@ -123,10 +126,25 @@ object DeviceLinkManager {
     /**
      * Removes a linked device by its deviceId.
      */
-    suspend fun unlinkDevice(linkedDeviceId: String) = withContext(Dispatchers.IO) {
+    suspend fun unlinkDevice(
+        linkedDeviceId: String,
+        notifyPeer: (suspend (phoneUserId: String) -> Unit)? = null
+    ) = withContext(Dispatchers.IO) {
+        // Notify the phone before removing the record so we still have its userId
+        val phoneUserId = transaction {
+            DeviceLinksTable.select { DeviceLinksTable.deviceId eq linkedDeviceId }
+                .firstOrNull()?.get(DeviceLinksTable.phoneUserId)
+        }
+        if (notifyPeer != null && !phoneUserId.isNullOrBlank()) {
+            runCatching { notifyPeer(phoneUserId) }
+        }
         transaction {
             DeviceLinksTable.deleteWhere { DeviceLinksTable.deviceId eq linkedDeviceId }
         }
+        // Clear all messages and contacts so a different account can link cleanly
+        MessageRepository.clearAll()
+        ContactRepository.clearAll()
+        _dataCleared.emit(Unit)
     }
 
     /**

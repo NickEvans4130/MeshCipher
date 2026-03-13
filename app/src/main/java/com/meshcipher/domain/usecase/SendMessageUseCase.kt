@@ -54,7 +54,7 @@ class SendMessageUseCase @Inject constructor(
         return if (sendResult.isSuccess) {
             val sentMessage = message.copy(status = MessageStatus.SENT)
             messageRepository.updateMessageStatus(message.id, MessageStatus.SENT)
-            forwardingService.forwardToLinkedDevices(content.toByteArray())
+            forwardingService.forwardOutgoingToLinkedDevices(content, contact.id, contact.displayName)
             Timber.d("Message sent: %s", message.id)
             Result.success(sentMessage)
         } else {

@@ -65,13 +65,27 @@ class MessagingManager(
                 messageId = msgId
             )
 
+            // Use ECDH only if the contact has a real desktop public key (non-empty, non-zero).
+            // Phone contacts synced from Android don't have desktop keys, so send plaintext
+            // base64 (content_type=0) the same way the Android app does.
+            val hasDesktopKey = contact.publicKeyHex.isNotBlank() &&
+                contact.publicKeyHex.any { it != '0' }
+
             runCatching {
-                val envelope = crypto.encryptMessage(
-                    plaintext = content,
-                    recipientUserId = recipientId,
-                    recipientPublicKeyHex = contact.publicKeyHex
-                )
-                relay.sendMessage(recipientId, envelope.toJson())
+                if (hasDesktopKey) {
+                    val envelope = crypto.encryptMessage(
+                        plaintext = content,
+                        recipientUserId = recipientId,
+                        recipientPublicKeyHex = contact.publicKeyHex
+                    )
+                    relay.sendMessage(recipientId, envelope.toJson())
+                } else {
+                    relay.sendRawMessage(
+                        recipientId = recipientId,
+                        payload = content.toByteArray(),
+                        contentType = CONTENT_TYPE_MESSAGE
+                    )
+                }
                 MessageRepository.updateStatus(msgId, "sent")
                 localMsg.copy(status = "sent")
             }.also { result ->
@@ -96,6 +110,8 @@ class MessagingManager(
         when (msg.contentType) {
             CONTENT_TYPE_DEVICE_LINK -> handleDeviceLinkResponse(payloadBytes)
             CONTENT_TYPE_CONTACT_SYNC -> handleContactSync(payloadBytes)
+            CONTENT_TYPE_FORWARDED -> handleForwardedMessage(payloadBytes)
+            CONTENT_TYPE_DEVICE_UNLINK -> handleRemoteUnlink()
             else -> handleMessage(msg.senderId, payloadBytes, msg.rawPayload)
         }
     }
@@ -174,6 +190,63 @@ class MessagingManager(
             title = senderName,
             body = plaintext.take(80).let { if (plaintext.length > 80) "$it…" else it }
         )
+    }
+
+    private suspend fun handleForwardedMessage(bytes: ByteArray) {
+        val root = runCatching {
+            json.parseToJsonElement(String(bytes)).let { it as? kotlinx.serialization.json.JsonObject }
+        }.getOrNull() ?: return
+        val content = root["content"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty().ifBlank { return }
+        val contactId = root["contactId"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty().ifBlank { return }
+        val contactName = root["contactName"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty().ifBlank { contactId.take(8) }
+        val isOutgoing = root["isOutgoing"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } ?: false
+        val timestamp = root["timestamp"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() } ?: System.currentTimeMillis()
+
+        // Ensure contact exists so the conversation renders with the right name
+        if (ContactRepository.getContact(contactId) == null) {
+            ContactRepository.upsertContact(
+                contactId = contactId,
+                displayName = contactName,
+                publicKeyHex = ""
+            )
+            _contactsUpdated.emit(Unit)
+        }
+
+        val msg = MessageRepository.save(
+            contactId = contactId,
+            content = content,
+            isOutgoing = isOutgoing,
+            status = "delivered",
+            timestamp = timestamp
+        )
+        _newMessages.emit(msg)
+
+        if (!isOutgoing) {
+            DesktopPlatform.showNotification(
+                title = contactName,
+                body = content.take(80).let { if (content.length > 80) "$it…" else it }
+            )
+        }
+    }
+
+    /** Send a type-13 unlink notification to the given relay userId. */
+    suspend fun sendUnlinkNotification(recipientUserId: String) {
+        relay.sendRawMessage(
+            recipientId = recipientUserId,
+            payload = "unlink".toByteArray(),
+            contentType = CONTENT_TYPE_DEVICE_UNLINK
+        )
+    }
+
+    /** Phone notified us it has unlinked — clear local data. */
+    private fun handleRemoteUnlink() {
+        scope.launch {
+            val devices = DeviceLinkManager.getApprovedDevices()
+            for (device in devices) {
+                // Unlink without sending another notification (notifyPeer = null)
+                DeviceLinkManager.unlinkDevice(device.deviceId)
+            }
+        }
     }
 
     fun dispose() = scope.cancel()

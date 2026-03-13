@@ -26,8 +26,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meshcipher.desktop.data.CONTENT_TYPE_DEVICE_UNLINK
 import com.meshcipher.desktop.data.DeviceLinkManager
 import com.meshcipher.desktop.data.LinkedPhone
+import com.meshcipher.desktop.data.MessagingManager
 import kotlinx.coroutines.launch
 import java.awt.image.BufferedImage
 import java.text.SimpleDateFormat
@@ -35,7 +37,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LinkDeviceScreen(onBack: () -> Unit = {}) {
+fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager? = null) {
     val scope = rememberCoroutineScope()
 
     // Pairing QR (phone scans to link)
@@ -135,7 +137,12 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}) {
                         phone = linkedPhone!!,
                         onUnlink = {
                             scope.launch {
-                                DeviceLinkManager.unlinkDevice(linkedPhone!!.deviceId)
+                                DeviceLinkManager.unlinkDevice(
+                                    linkedDeviceId = linkedPhone!!.deviceId,
+                                    notifyPeer = { phoneUserId ->
+                                        messagingManager?.sendUnlinkNotification(phoneUserId)
+                                    }
+                                )
                                 refreshKey++
                             }
                         }
