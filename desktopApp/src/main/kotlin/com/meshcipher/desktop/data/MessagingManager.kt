@@ -112,6 +112,7 @@ class MessagingManager(
             CONTENT_TYPE_CONTACT_SYNC -> handleContactSync(payloadBytes)
             CONTENT_TYPE_FORWARDED -> handleForwardedMessage(payloadBytes)
             CONTENT_TYPE_DEVICE_UNLINK -> handleRemoteUnlink()
+            CONTENT_TYPE_DESKTOP_MSG -> handleDesktopMessage(msg.senderId, payloadBytes)
             else -> handleMessage(msg.senderId, payloadBytes, msg.rawPayload)
         }
     }
@@ -227,6 +228,83 @@ class MessagingManager(
                 body = content.take(80).let { if (content.length > 80) "$it…" else it }
             )
         }
+    }
+
+    /**
+     * Send an ECDH-encrypted message to another linked desktop (content_type=15).
+     * Uses the contact's stored public key hex for the ECDH key agreement.
+     */
+    suspend fun sendToDesktop(content: String, recipientId: String): Result<DesktopMessage> =
+        withContext(Dispatchers.IO) {
+            val contact = ContactRepository.getContact(recipientId)
+                ?: return@withContext Result.failure(IllegalStateException("Contact $recipientId not found"))
+
+            val hasKey = contact.publicKeyHex.isNotBlank() && contact.publicKeyHex.any { it != '0' }
+            if (!hasKey) return@withContext Result.failure(
+                IllegalStateException("No desktop public key for $recipientId")
+            )
+
+            val msgId = generateUUID()
+            val localMsg = MessageRepository.save(
+                contactId = recipientId,
+                content = content,
+                isOutgoing = true,
+                status = "sending",
+                messageId = msgId
+            )
+
+            runCatching {
+                val envelope = crypto.encryptMessage(
+                    plaintext = content,
+                    recipientUserId = recipientId,
+                    recipientPublicKeyHex = contact.publicKeyHex
+                )
+                relay.sendRawMessage(
+                    recipientId = recipientId,
+                    payload = envelope.toJson().toByteArray(),
+                    contentType = CONTENT_TYPE_DESKTOP_MSG
+                )
+                MessageRepository.updateStatus(msgId, "sent")
+                localMsg.copy(status = "sent")
+            }.also { result ->
+                if (result.isFailure) MessageRepository.updateStatus(msgId, "failed")
+            }
+        }
+
+    /** Incoming ECDH-encrypted desktop-to-desktop message (content_type=15). */
+    private suspend fun handleDesktopMessage(senderId: String, payloadBytes: ByteArray) {
+        var contact = ContactRepository.getContact(senderId)
+        if (contact == null) {
+            val linkedPhone = DeviceLinkManager.getApprovedDevices()
+                .firstOrNull { it.phoneUserId == senderId } ?: return
+            ContactRepository.upsertContact(
+                contactId = senderId,
+                displayName = linkedPhone.deviceName,
+                publicKeyHex = linkedPhone.phonePublicKeyHex
+            )
+            contact = ContactRepository.getContact(senderId) ?: return
+        }
+
+        val payloadJson = String(payloadBytes)
+        val envelope = runCatching { MessageEnvelope.fromJson(payloadJson) }.getOrNull() ?: return
+        val plaintext = runCatching {
+            crypto.decryptMessage(envelope, contact.publicKeyHex)
+        }.getOrNull() ?: return
+
+        val msg = MessageRepository.save(
+            contactId = senderId,
+            content = plaintext,
+            isOutgoing = false,
+            status = "delivered",
+            timestamp = envelope.timestamp
+        )
+        _newMessages.emit(msg)
+
+        val senderName = contact.displayName.ifBlank { senderId.take(8) }
+        DesktopPlatform.showNotification(
+            title = senderName,
+            body = plaintext.take(80).let { if (plaintext.length > 80) "$it…" else it }
+        )
     }
 
     /** Send a type-13 unlink notification to the given relay userId. */
