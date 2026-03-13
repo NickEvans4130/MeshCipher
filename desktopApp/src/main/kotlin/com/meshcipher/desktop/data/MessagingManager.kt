@@ -112,6 +112,7 @@ class MessagingManager(
             CONTENT_TYPE_CONTACT_SYNC -> handleContactSync(payloadBytes)
             CONTENT_TYPE_FORWARDED -> handleForwardedMessage(payloadBytes)
             CONTENT_TYPE_DEVICE_UNLINK -> handleRemoteUnlink()
+            CONTENT_TYPE_MEDIA_FORWARDED -> handleMediaForwarded(payloadBytes)
             CONTENT_TYPE_DESKTOP_MSG -> handleDesktopMessage(msg.senderId, payloadBytes)
             else -> handleMessage(msg.senderId, payloadBytes, msg.rawPayload)
         }
@@ -226,6 +227,65 @@ class MessagingManager(
             DesktopPlatform.showNotification(
                 title = contactName,
                 body = content.take(80).let { if (content.length > 80) "$it…" else it }
+            )
+        }
+    }
+
+    private suspend fun handleMediaForwarded(bytes: ByteArray) {
+        val root = runCatching {
+            json.parseToJsonElement(String(bytes)).let { it as? kotlinx.serialization.json.JsonObject }
+        }.getOrNull() ?: return
+
+        fun str(key: String) = root[key]
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            .orEmpty()
+
+        val fileName = str("fileName").ifBlank { return }
+        val mimeType = str("mimeType")
+        val fileDataB64 = str("fileData").ifBlank { return }
+        val contactId = str("contactId").ifBlank { return }
+        val contactName = str("contactName").ifBlank { contactId.take(8) }
+        val isOutgoing = root["isOutgoing"]
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() }
+            ?: false
+        val timestamp = root["timestamp"]
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() }
+            ?: System.currentTimeMillis()
+
+        val fileBytes = runCatching { java.util.Base64.getDecoder().decode(fileDataB64) }
+            .getOrNull() ?: return
+
+        // Save to ~/Downloads/MeshCipher/<contactName>/<fileName>
+        val safeContact = contactName.replace(Regex("[^A-Za-z0-9_\\- ]"), "_")
+        val safeFile = fileName.replace(Regex("[^A-Za-z0-9_.\\- ]"), "_")
+        val downloadsDir = java.io.File(System.getProperty("user.home"), "Downloads/MeshCipher/$safeContact")
+        downloadsDir.mkdirs()
+        val outFile = java.io.File(downloadsDir, safeFile)
+        outFile.writeBytes(fileBytes)
+
+        if (ContactRepository.getContact(contactId) == null) {
+            ContactRepository.upsertContact(
+                contactId = contactId,
+                displayName = contactName,
+                publicKeyHex = ""
+            )
+            _contactsUpdated.emit(Unit)
+        }
+
+        val displayContent = "[File: ${outFile.absolutePath}]"
+        val msg = MessageRepository.save(
+            contactId = contactId,
+            content = displayContent,
+            isOutgoing = isOutgoing,
+            status = "delivered",
+            timestamp = timestamp
+        )
+        _newMessages.emit(msg)
+
+        if (!isOutgoing) {
+            DesktopPlatform.showNotification(
+                title = contactName,
+                body = "File received: $fileName"
             )
         }
     }

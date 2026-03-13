@@ -25,6 +25,20 @@ data class ForwardedMessage(
     val timestamp: Long
 )
 
+/**
+ * Forwarded media envelope sent to linked desktop devices (content_type=14).
+ * [fileData] is base64-encoded raw file bytes (capped at 10 MB).
+ */
+data class ForwardedMediaMessage(
+    val fileName: String,
+    val mimeType: String,
+    val fileData: String,
+    val contactId: String,
+    val contactName: String,
+    val isOutgoing: Boolean,
+    val timestamp: Long
+)
+
 @Singleton
 class MessageForwardingService @Inject constructor(
     private val identityManager: IdentityManager,
@@ -100,6 +114,53 @@ class MessageForwardingService @Inject constructor(
                 )
             }.onFailure { e ->
                 Timber.w(e, "Failed to forward incoming message to linked device %s", device.deviceId)
+            }
+        }
+    }
+
+    /**
+     * Forward a media file to all linked desktop devices (content_type=14).
+     * Skips files larger than 10 MB to avoid overloading the relay.
+     */
+    suspend fun forwardMediaToLinkedDevices(
+        fileName: String,
+        mimeType: String,
+        fileBytes: ByteArray,
+        contactId: String,
+        contactName: String,
+        isOutgoing: Boolean
+    ) = withContext(Dispatchers.IO) {
+        val maxBytes = 10 * 1024 * 1024
+        if (fileBytes.size > maxBytes) {
+            Timber.w("Skipping media forward — file too large (%d bytes)", fileBytes.size)
+            return@withContext
+        }
+
+        val identity = identityManager.getIdentity() ?: return@withContext
+        val approvedDevices = linkedDevicesRepository.observeApproved().first()
+        if (approvedDevices.isEmpty()) return@withContext
+
+        val payload = ForwardedMediaMessage(
+            fileName = fileName,
+            mimeType = mimeType,
+            fileData = Base64.getEncoder().encodeToString(fileBytes),
+            contactId = contactId,
+            contactName = contactName,
+            isOutgoing = isOutgoing,
+            timestamp = System.currentTimeMillis()
+        )
+        val bytes = gson.toJson(payload).toByteArray()
+
+        for (device in approvedDevices) {
+            runCatching {
+                internetTransport.sendMessage(
+                    senderId = identity.userId,
+                    recipientId = userIdFromPublicKeyHex(device.publicKeyHex),
+                    encryptedContent = bytes,
+                    contentType = 14
+                )
+            }.onFailure { e ->
+                Timber.w(e, "Failed to forward media to linked device %s", device.deviceId)
             }
         }
     }
