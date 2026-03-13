@@ -68,6 +68,7 @@ fun main() {
 
         MeshCipherTray(
             trayState = trayState,
+            relay = relay,
             onShow = { isVisible = true },
             onQuit = {
                 messagingManager?.dispose()
@@ -89,7 +90,7 @@ fun main() {
                     onSetupComplete = { setupComplete = true }
                 )
             } else {
-                MeshCipherApp(messagingManager)
+                MeshCipherApp(messagingManager, relay)
             }
         }
     }
