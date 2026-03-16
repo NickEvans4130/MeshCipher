@@ -15,6 +15,7 @@ import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
+import com.meshcipher.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
@@ -29,6 +30,7 @@ class ReceiveMessageUseCase @Inject constructor(
     private val mediaEncryptor: MediaEncryptor,
     private val mediaFileManager: MediaFileManager,
     private val forwardingService: MessageForwardingService,
+    private val sendMessageUseCase: SendMessageUseCase,
     @ApplicationContext private val context: Context
 ) {
 
@@ -85,6 +87,7 @@ class ReceiveMessageUseCase @Inject constructor(
         when (queued.contentType) {
             1 -> processMediaMessage(queued)
             13 -> processUnlinkNotification(queued)
+            16 -> processDesktopSendRequest(queued)
             else -> processTextMessage(queued)
         }
     }
@@ -191,5 +194,31 @@ class ReceiveMessageUseCase @Inject constructor(
 
         Timber.d("Received media (%s) from %s in conversation %s",
             mediaType, senderContact.displayName, conversationId)
+    }
+
+    /**
+     * Desktop sent a message on behalf of the phone user (content_type=16).
+     * Payload JSON: {"content":"...","recipientId":"...","senderId":"...","conversationId":"..."}
+     * Phone sends it to the actual contact, then forwards the sent copy back to the desktop.
+     */
+    private suspend fun processDesktopSendRequest(queued: QueuedMessage) {
+        val contentBytes = Base64.decode(queued.encryptedContent, Base64.NO_WRAP)
+        val json = org.json.JSONObject(String(contentBytes))
+        val content = json.optString("content").ifBlank { return }
+        val recipientId = json.optString("recipientId").ifBlank { return }
+        val senderId = json.optString("senderId").ifBlank { return }
+        val conversationId = json.optString("conversationId").ifBlank {
+            conversationRepository.createOrGetConversation(recipientId)
+        }
+
+        val result = sendMessageUseCase(
+            conversationId = conversationId,
+            contactId = recipientId,
+            senderId = senderId,
+            content = content
+        )
+        if (result.isFailure) {
+            Timber.w(result.exceptionOrNull(), "Desktop send request failed for contact %s", recipientId)
+        }
     }
 }

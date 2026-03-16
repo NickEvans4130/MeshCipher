@@ -80,10 +80,16 @@ class MessagingManager(
                     )
                     relay.sendMessage(recipientId, envelope.toJson())
                 } else {
+                    // Phone contact — route through the linked phone so the message
+                    // arrives from the phone's identity (which the recipient knows).
+                    val phone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+                        ?: return@withContext Result.failure(IllegalStateException("No linked phone to route message through"))
+                    val escapedContent = content.replace("\\", "\\\\").replace("\"", "\\\"")
+                    val payload = """{"content":"$escapedContent","recipientId":"$recipientId","senderId":"${phone.phoneUserId}","conversationId":""}""".toByteArray()
                     relay.sendRawMessage(
-                        recipientId = recipientId,
-                        payload = content.toByteArray(),
-                        contentType = CONTENT_TYPE_MESSAGE
+                        recipientId = phone.phoneUserId,
+                        payload = payload,
+                        contentType = CONTENT_TYPE_DESKTOP_SEND_REQUEST
                     )
                 }
                 MessageRepository.updateStatus(msgId, "sent")

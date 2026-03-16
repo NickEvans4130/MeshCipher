@@ -126,11 +126,10 @@ class DeviceLinkApprovalViewModel @Inject constructor(
         if (contacts.isEmpty()) return
 
         val items = contacts.map { entity ->
-            val pubKeyHex = entity.publicKey.joinToString("") { "%02x".format(it) }
             mapOf(
-                "userId" to userIdFromPublicKeyHex(pubKeyHex),
+                "userId" to entity.id,
                 "displayName" to entity.displayName,
-                "publicKeyHex" to pubKeyHex
+                "publicKeyHex" to entity.publicKey.joinToString("") { "%02x".format(it) }
             )
         }
         val payload = mapOf("type" to "contact_sync", "contacts" to items)
