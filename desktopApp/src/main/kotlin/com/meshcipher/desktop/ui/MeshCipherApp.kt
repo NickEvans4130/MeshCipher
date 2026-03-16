@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Refresh
@@ -51,6 +52,8 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import javax.swing.JFileChooser
+import javax.swing.SwingUtilities
 
 private enum class NavItem { CONVERSATIONS, LINK_DEVICE, SETTINGS }
 
@@ -442,6 +445,24 @@ private fun ChatPane(
         }
     }
 
+    fun pickAndSendFile() {
+        if (isSending || messagingManager == null) return
+        SwingUtilities.invokeLater {
+            val chooser = JFileChooser()
+            chooser.dialogTitle = "Send File"
+            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                val file = chooser.selectedFile
+                scope.launch {
+                    isSending = true
+                    messagingManager.sendFile(file, contact.contactId).onSuccess { msg ->
+                        messages = messages + msg
+                    }
+                    isSending = false
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().background(Background)
     ) {
@@ -508,6 +529,18 @@ private fun ChatPane(
                 .padding(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+            IconButton(
+                onClick = { pickAndSendFile() },
+                enabled = !isSending && messagingManager != null,
+                modifier = Modifier.size(46.dp)
+            ) {
+                Icon(
+                    Icons.Default.AttachFile,
+                    contentDescription = "Attach file",
+                    tint = if (!isSending && messagingManager != null) TextSecondary else TextTertiary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },

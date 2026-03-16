@@ -393,5 +393,50 @@ class MessagingManager(
         }
     }
 
+    /**
+     * Send a file to a phone contact by routing through the linked phone (content_type=17).
+     * Capped at 10 MB.
+     */
+    suspend fun sendFile(file: java.io.File, recipientId: String): Result<DesktopMessage> =
+        withContext(Dispatchers.IO) {
+            val maxBytes = 10 * 1024 * 1024
+            if (file.length() > maxBytes) {
+                return@withContext Result.failure(IllegalArgumentException("File too large (max 10 MB)"))
+            }
+            val phone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+                ?: return@withContext Result.failure(IllegalStateException("No linked phone"))
+
+            val fileBytes = file.readBytes()
+            val fileDataB64 = java.util.Base64.getEncoder().encodeToString(fileBytes)
+            val mimeType = runCatching {
+                java.nio.file.Files.probeContentType(file.toPath())
+            }.getOrNull() ?: "application/octet-stream"
+            val escapedName = file.name.replace("\\", "\\\\").replace("\"", "\\\"")
+            val escapedMime = mimeType.replace("\"", "\\\"")
+
+            val payload = """{"fileName":"$escapedName","mimeType":"$escapedMime","fileData":"$fileDataB64","recipientId":"$recipientId","senderId":"${phone.phoneUserId}"}""".toByteArray()
+
+            val msgId = generateUUID()
+            val localMsg = MessageRepository.save(
+                contactId = recipientId,
+                content = "[File: ${file.name}]",
+                isOutgoing = true,
+                status = "sending",
+                messageId = msgId
+            )
+
+            runCatching {
+                relay.sendRawMessage(
+                    recipientId = phone.phoneUserId,
+                    payload = payload,
+                    contentType = CONTENT_TYPE_DESKTOP_MEDIA_REQUEST
+                )
+                MessageRepository.updateStatus(msgId, "sent")
+                localMsg.copy(status = "sent")
+            }.also { result ->
+                if (result.isFailure) MessageRepository.updateStatus(msgId, "failed")
+            }
+        }
+
     fun dispose() = scope.cancel()
 }

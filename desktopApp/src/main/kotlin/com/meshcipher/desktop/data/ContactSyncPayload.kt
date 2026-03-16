@@ -10,6 +10,7 @@ const val CONTENT_TYPE_DEVICE_UNLINK = 13
 const val CONTENT_TYPE_MEDIA_FORWARDED = 14
 const val CONTENT_TYPE_DESKTOP_MSG = 15
 const val CONTENT_TYPE_DESKTOP_SEND_REQUEST = 16
+const val CONTENT_TYPE_DESKTOP_MEDIA_REQUEST = 17
 
 @Serializable
 data class ContactSyncPayload(

@@ -15,10 +15,10 @@ import com.meshcipher.domain.model.MessageStatus
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
 import com.meshcipher.domain.repository.MessageRepository
-import com.meshcipher.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
@@ -31,6 +31,7 @@ class ReceiveMessageUseCase @Inject constructor(
     private val mediaFileManager: MediaFileManager,
     private val forwardingService: MessageForwardingService,
     private val sendMessageUseCase: SendMessageUseCase,
+    private val sendMediaMessageUseCase: SendMediaMessageUseCase,
     @ApplicationContext private val context: Context
 ) {
 
@@ -88,6 +89,7 @@ class ReceiveMessageUseCase @Inject constructor(
             1 -> processMediaMessage(queued)
             13 -> processUnlinkNotification(queued)
             16 -> processDesktopSendRequest(queued)
+            17 -> processDesktopMediaRequest(queued)
             else -> processTextMessage(queued)
         }
     }
@@ -227,6 +229,63 @@ class ReceiveMessageUseCase @Inject constructor(
         )
         if (result.isFailure) {
             Timber.w(result.exceptionOrNull(), "Desktop send request failed for contact %s", recipientId)
+        }
+    }
+
+    /**
+     * Desktop sent a file on behalf of the phone user (content_type=17).
+     * Payload JSON: {"fileName":"...","mimeType":"...","fileData":"<base64>","recipientId":"...","senderId":"..."}
+     * Phone writes file to a temp location, encrypts it, and sends as a media message.
+     */
+    private suspend fun processDesktopMediaRequest(queued: QueuedMessage) {
+        val contentBytes = Base64.decode(queued.encryptedContent, Base64.NO_WRAP)
+        val json = org.json.JSONObject(String(contentBytes))
+        val fileName = json.optString("fileName").ifBlank { return }
+        val mimeType = json.optString("mimeType").ifBlank { "application/octet-stream" }
+        val fileDataB64 = json.optString("fileData").ifBlank { return }
+        val recipientId = json.optString("recipientId").ifBlank { return }
+        val senderId = json.optString("senderId").ifBlank { return }
+
+        val fileBytes = runCatching {
+            java.util.Base64.getDecoder().decode(fileDataB64)
+        }.getOrElse { Timber.w(it, "Failed to decode file bytes"); return }
+
+        // Write to a temp file so SendMediaMessageUseCase can process it
+        val tempFile = File(context.cacheDir, "desktop_send_${UUID.randomUUID()}_$fileName")
+        tempFile.writeBytes(fileBytes)
+
+        val mediaType = when {
+            mimeType.startsWith("image/") -> MediaType.IMAGE
+            mimeType.startsWith("video/") -> MediaType.VIDEO
+            else -> MediaType.VOICE // VOICE used as generic binary fallback
+        }
+
+        val encrypted = mediaEncryptor.encrypt(fileBytes)
+
+        val conversationId = conversationRepository.createOrGetConversation(recipientId)
+        val attachment = MediaAttachment(
+            mediaId = UUID.randomUUID().toString(),
+            mediaType = mediaType,
+            fileName = fileName,
+            fileSize = fileBytes.size.toLong(),
+            mimeType = mimeType,
+            localPath = tempFile.absolutePath,
+            encryptionKey = encrypted.keyBase64,
+            encryptionIv = encrypted.ivBase64
+        )
+
+        val result = sendMediaMessageUseCase(
+            conversationId = conversationId,
+            contactId = recipientId,
+            senderId = senderId,
+            mediaAttachment = attachment,
+            encryptedFileBytes = encrypted.encryptedBytes
+        )
+
+        tempFile.delete()
+
+        if (result.isFailure) {
+            Timber.w(result.exceptionOrNull(), "Desktop media send request failed for contact %s", recipientId)
         }
     }
 }
