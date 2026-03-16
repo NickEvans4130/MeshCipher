@@ -47,7 +47,7 @@ class MessagingManager(
     private suspend fun pollLoop() {
         while (true) {
             runCatching { relay.pollQueuedMessages() }
-            kotlinx.coroutines.delay(30_000L)
+            kotlinx.coroutines.delay(3_000L)
         }
     }
 
