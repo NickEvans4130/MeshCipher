@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,15 +44,18 @@ import com.meshcipher.desktop.data.DesktopMessage
 import com.meshcipher.desktop.data.DeviceLinkManager
 import com.meshcipher.desktop.data.MessageRepository
 import com.meshcipher.desktop.data.MessagingManager
+import com.meshcipher.desktop.data.SettingsRepository
+import com.meshcipher.desktop.network.RelayState
+import com.meshcipher.desktop.network.RelayTransport
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class NavItem { CONVERSATIONS, LINK_DEVICE }
+private enum class NavItem { CONVERSATIONS, LINK_DEVICE, SETTINGS }
 
 @Composable
-fun MeshCipherApp(messagingManager: MessagingManager? = null) {
+fun MeshCipherApp(messagingManager: MessagingManager? = null, relay: RelayTransport? = null) {
     MaterialTheme(colorScheme = TacticalColorScheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -87,7 +91,8 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
                     onNavSelect = { nav ->
                         selectedNav = nav
                         if (nav == NavItem.CONVERSATIONS) inChat = false
-                    }
+                    },
+                    relay = relay
                 )
 
                 // ── Divider ──
@@ -106,6 +111,13 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
                             inChat = false
                         },
                         messagingManager = messagingManager
+                    )
+
+                    selectedNav == NavItem.SETTINGS -> SettingsScreen(
+                        onBack = {
+                            selectedNav = NavItem.CONVERSATIONS
+                            inChat = false
+                        }
                     )
 
                     inChat && selectedContact != null -> ChatPane(
@@ -131,7 +143,8 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null) {
 @Composable
 private fun TacticalSidebar(
     selectedNav: NavItem,
-    onNavSelect: (NavItem) -> Unit
+    onNavSelect: (NavItem) -> Unit,
+    relay: RelayTransport? = null
 ) {
     Column(
         modifier = Modifier
@@ -180,33 +193,57 @@ private fun TacticalSidebar(
             onClick = { onNavSelect(NavItem.LINK_DEVICE) }
         )
 
+        SidebarNavItem(
+            label = "SETTINGS",
+            icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            selected = selectedNav == NavItem.SETTINGS,
+            onClick = { onNavSelect(NavItem.SETTINGS) }
+        )
+
         Spacer(Modifier.weight(1f))
 
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Divider))
 
         Spacer(Modifier.height(12.dp))
 
-        // Status footer
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(Accent)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "E2E ENCRYPTED",
-                style = MaterialTheme.typography.labelSmall,
-                color = Accent,
-                fontFamily = Monospace,
-                letterSpacing = 1.sp
-            )
-        }
+        // Status footer — shows relay connection state + TOR indicator
+        ConnectionStatusBadge(relay = relay)
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun ConnectionStatusBadge(relay: RelayTransport?) {
+    val relayState by (relay?.state ?: kotlinx.coroutines.flow.MutableStateFlow(RelayState.DISCONNECTED))
+        .collectAsState()
+    val torEnabled by SettingsRepository.torEnabled.collectAsState()
+
+    val (dotColor, label) = when {
+        relayState == RelayState.CONNECTED && torEnabled -> Accent to "TOR ACTIVE"
+        relayState == RelayState.CONNECTED               -> Accent to "E2E ENCRYPTED"
+        relayState == RelayState.CONNECTING              -> Color(0xFFFFA726) to "CONNECTING"
+        relayState == RelayState.TOR_UNAVAILABLE         -> ErrorRed to "TOR UNAVAILABLE"
+        else                                             -> ErrorRed to "DISCONNECTED"
+    }
+
+    Row(
+        modifier = Modifier.padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = dotColor,
+            fontFamily = Monospace,
+            letterSpacing = 1.sp
+        )
     }
 }
 

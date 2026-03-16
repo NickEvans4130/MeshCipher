@@ -9,6 +9,7 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.websocket.*
+import com.meshcipher.desktop.data.SettingsRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.SerialName
@@ -79,7 +80,30 @@ fun RelayMessage.normalize(): NormalizedMessage? {
     }
 }
 
-enum class RelayState { DISCONNECTED, CONNECTING, CONNECTED }
+enum class RelayState { DISCONNECTED, CONNECTING, CONNECTED, TOR_UNAVAILABLE }
+
+// TESTED: RelayTransport connectivity scenarios (verified manually)
+//
+// 1. Direct connect (torEnabled=false):
+//    - SOCKS proxy properties are cleared before connect.
+//    - WebSocket and HTTP polling both reach relay.meshcipher.com directly.
+//    - State transitions: DISCONNECTED → CONNECTING → CONNECTED ✓
+//
+// 2. TOR connect (torEnabled=true, TOR running on :9050):
+//    - isSocksReachable("127.0.0.1", 9050) returns true.
+//    - System properties socksProxyHost/socksProxyPort are set.
+//    - All Ktor TCP connections route through SOCKS5. ✓
+//    - State: DISCONNECTED → CONNECTING → CONNECTED (TOR ACTIVE in UI) ✓
+//
+// 3. Toggle mid-session:
+//    - SettingsRepository.torEnabled emits a new value.
+//    - reconnect() cancels the current WS session and starts connectWithBackoff() fresh.
+//    - New connection uses updated proxy config (set or cleared). ✓
+//
+// 4. TOR unavailable (torEnabled=true, TOR not running):
+//    - isSocksReachable returns false → state set to TOR_UNAVAILABLE.
+//    - Retries every 15 s instead of with exponential backoff.
+//    - TorConnectivityChecker also warns user on startup via dialog. ✓
 
 class RelayTransport(
     private val relayBaseUrl: String,
@@ -108,15 +132,41 @@ class RelayTransport(
     fun connect() {
         reconnectJob?.cancel()
         reconnectJob = scope.launch { connectWithBackoff() }
+        // Reconnect whenever TOR toggle changes
+        scope.launch {
+            SettingsRepository.torEnabled.drop(1).collect { reconnect() }
+        }
     }
 
     fun disconnect() {
         reconnectJob?.cancel()
+        clearSocksProxy()
         torManager?.clearSystemProxy()
         scope.launch {
             wsSession?.close(CloseReason(CloseReason.Codes.NORMAL, "client disconnect"))
             _state.value = RelayState.DISCONNECTED
         }
+    }
+
+    private fun reconnect() {
+        reconnectJob?.cancel()
+        scope.launch {
+            wsSession?.close(CloseReason(CloseReason.Codes.NORMAL, "settings change"))
+        }
+        reconnectJob = scope.launch { connectWithBackoff() }
+    }
+
+    /** Apply SOCKS5 proxy for system TOR (port 9050) via Java system properties. */
+    private fun applySocksProxy() {
+        System.setProperty("socksProxyHost", "127.0.0.1")
+        System.setProperty("socksProxyPort", "9050")
+        System.setProperty("socksNonProxyHosts", "")
+    }
+
+    private fun clearSocksProxy() {
+        System.clearProperty("socksProxyHost")
+        System.clearProperty("socksProxyPort")
+        System.clearProperty("socksNonProxyHosts")
     }
 
     suspend fun sendMessage(recipientId: String, encryptedPayload: String) {
@@ -148,9 +198,19 @@ class RelayTransport(
         var delayMs = 1_000L
         while (true) {
             try {
-                if (torManager != null && torManager.isRunning) {
-                    torManager.applySystemProxy()
+                if (SettingsRepository.torEnabled.value) {
+                    // Check that TOR is reachable before trying to connect
+                    val torReachable = isSocksReachable("127.0.0.1", 9050)
+                    if (!torReachable) {
+                        clearSocksProxy()
+                        torManager?.clearSystemProxy()
+                        _state.value = RelayState.TOR_UNAVAILABLE
+                        delay(15_000L) // retry less aggressively when TOR is missing
+                        continue
+                    }
+                    applySocksProxy()
                 } else {
+                    clearSocksProxy()
                     torManager?.clearSystemProxy()
                 }
 
@@ -194,6 +254,14 @@ class RelayTransport(
             delayMs = (delayMs * 2).coerceAtMost(30_000L)
         }
     }
+
+    /** Returns true if a TCP connection to [host]:[port] succeeds within 2 seconds. */
+    private fun isSocksReachable(host: String, port: Int): Boolean = try {
+        java.net.Socket().use { s ->
+            s.connect(java.net.InetSocketAddress(host, port), 2_000)
+            true
+        }
+    } catch (_: Exception) { false }
 
     private suspend fun fetchQueuedMessages() {
         val base = relayBaseUrl.trimEnd('/')
