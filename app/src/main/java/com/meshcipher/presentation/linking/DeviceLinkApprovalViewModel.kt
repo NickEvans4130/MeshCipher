@@ -115,6 +115,11 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                     contentType = ContentTypes.LINK_CONFIRM_REQUEST
                 )
 
+                // GAP-06 / R-06: Clear any stale replay event from a prior session before
+                // waiting, so a cached Confirmed/Denied from a previous enrolment cannot
+                // immediately satisfy the collector for this new request.
+                linkConfirmationChannel.resetReplay()
+
                 _state.value = ApprovalState.AwaitingDesktopConfirmation
 
                 // Wait for desktop to confirm or deny within 2 minutes (GAP-06 / R-06).

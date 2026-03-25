@@ -71,6 +71,18 @@ object WifiDirectMessageCodec {
     fun decode(input: InputStream): WifiDirectMessage {
         val dis = DataInputStream(input)
         val typeByte = dis.readByte()
+
+        // GAP-07 / R-07: Reject unknown type bytes BEFORE reading the length field so an
+        // attacker cannot use a crafted length to exhaust heap on an ultimately-rejected frame.
+        if (typeByte != WifiDirectMessageType.TEXT_MESSAGE &&
+            typeByte != WifiDirectMessageType.FILE_TRANSFER &&
+            typeByte != WifiDirectMessageType.FILE_CHUNK &&
+            typeByte != WifiDirectMessageType.ACKNOWLEDGMENT) {
+            throw IllegalArgumentException(
+                "Unknown WiFi Direct message type byte: 0x${typeByte.toInt().and(0xFF).toString(16)}"
+            )
+        }
+
         val length = dis.readInt()
 
         // GAP-07 / R-07: Reject oversized payloads before allocating any buffer.
@@ -87,10 +99,7 @@ object WifiDirectMessageCodec {
             WifiDirectMessageType.TEXT_MESSAGE -> decodeTextMessage(payload)
             WifiDirectMessageType.FILE_TRANSFER -> decodeFileTransfer(payload)
             WifiDirectMessageType.FILE_CHUNK -> decodeFileChunk(payload)
-            WifiDirectMessageType.ACKNOWLEDGMENT -> decodeAcknowledgment(payload)
-            else -> throw IllegalArgumentException(
-                "Unknown WiFi Direct message type byte: 0x${typeByte.toInt().and(0xFF).toString(16)}"
-            )
+            else -> decodeAcknowledgment(payload) // ACKNOWLEDGMENT — only remaining valid type
         }
     }
 

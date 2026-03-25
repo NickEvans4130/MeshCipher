@@ -39,7 +39,12 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager? = null) {
+fun LinkDeviceScreen(
+    onBack: () -> Unit = {},
+    messagingManager: MessagingManager? = null,
+    pendingConfirmation: LinkConfirmationRequest? = null,
+    onPendingConfirmationChange: (LinkConfirmationRequest?) -> Unit = {}
+) {
     val scope = rememberCoroutineScope()
 
     // Pairing QR (phone scans to link)
@@ -56,9 +61,6 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
     var displayUserId by remember { mutableStateOf("") }
     var linkedPhone by remember { mutableStateOf<LinkedPhone?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
-
-    // GAP-06 / R-06: Pending link confirmation request from Android
-    var pendingConfirmation by remember { mutableStateOf<LinkConfirmationRequest?>(null) }
 
     suspend fun loadPairingQr() {
         pairingQrLoading = true
@@ -94,33 +96,11 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
         DeviceLinkManager.deviceLinked.collect { refreshKey++ }
     }
 
-    // GAP-06 / R-06: Collect link confirmation requests from Android
-    LaunchedEffect(messagingManager) {
-        messagingManager?.linkConfirmationPending?.collect { req ->
-            pendingConfirmation = req
-        }
-    }
-
-    // GAP-06 / R-06: Auto-dismiss + deny if desktop user ignores the dialog for 2 minutes
-    val currentPending = pendingConfirmation
-    LaunchedEffect(currentPending) {
-        if (currentPending == null) return@LaunchedEffect
-        delay(2 * 60 * 1000L) // 2 minutes
-        if (pendingConfirmation == currentPending) {
-            // Still pending after 2 min — auto-deny
-            pendingConfirmation = null
-            scope.launch {
-                val pubKeyBytes = currentPending.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
-                val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
-                messagingManager?.sendLinkDenied(phoneUserId, currentPending.deviceId)
-            }
-        }
-    }
-
     // GAP-05 / R-06: Countdown timer — auto-expire the pairing QR after 60 seconds.
     // The desktop generates a new nonce on each refresh, so the expired QR is permanently invalid.
-    LaunchedEffect(refreshKey) {
+    // Keyed on both refreshKey and linkedPhone so the timer restarts when the phone links
+    // (linkedPhone transitions null → non-null) without requiring a manual refresh.
+    LaunchedEffect(refreshKey, linkedPhone) {
         if (linkedPhone != null) return@LaunchedEffect
         for (remaining in 59 downTo 0) {
             delay(1_000L)
@@ -181,13 +161,14 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
             },
             confirmButton = {
                 TextButton(onClick = {
-                    pendingConfirmation = null
                     scope.launch {
                         // Derive phoneUserId from the public key (matches Android algorithm)
                         val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
                         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
                         val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
                         messagingManager?.sendLinkConfirmed(phoneUserId, confirmation.deviceId)
+                        // Clear only after successful send so dialog stays open on failure
+                        onPendingConfirmationChange(null)
                         refreshKey++
                     }
                 }) {
@@ -196,12 +177,13 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
             },
             dismissButton = {
                 TextButton(onClick = {
-                    pendingConfirmation = null
                     scope.launch {
                         val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
                         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
                         val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
                         messagingManager?.sendLinkDenied(phoneUserId, confirmation.deviceId)
+                        // Clear only after successful send so dialog stays open on failure
+                        onPendingConfirmationChange(null)
                     }
                 }) {
                     Text("DENY", color = ErrorRed, fontFamily = Monospace)

@@ -32,4 +32,15 @@ class LinkConfirmationChannel @Inject constructor() {
     fun emit(event: Event) {
         _events.tryEmit(event)
     }
+
+    /**
+     * Clears any replayed event from a prior enrolment session.
+     * Call this before starting to await a new confirmation so that a stale
+     * cached event from a previously-approved (or denied) session cannot
+     * immediately satisfy the new [DeviceLinkApprovalViewModel] collector.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun resetReplay() {
+        _events.resetReplayCache()
+    }
 }
