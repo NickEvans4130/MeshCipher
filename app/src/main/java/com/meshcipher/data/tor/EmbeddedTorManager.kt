@@ -10,6 +10,7 @@ import android.os.IBinder
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import com.meshcipher.data.local.preferences.AppPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import net.freehaven.tor.control.TorControlConnection
 import org.torproject.jni.TorService
@@ -29,7 +31,8 @@ import javax.inject.Singleton
 
 @Singleton
 class EmbeddedTorManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val appPreferences: AppPreferences
 ) {
 
     enum class State {
@@ -47,6 +50,17 @@ class EmbeddedTorManager @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _status = MutableStateFlow(EmbeddedTorStatus())
     val status: StateFlow<EmbeddedTorStatus> = _status.asStateFlow()
+
+    @Volatile
+    private var ephemeralMode: Boolean = false
+
+    init {
+        scope.launch {
+            appPreferences.ephemeralOnionMode.collect { enabled ->
+                ephemeralMode = enabled
+            }
+        }
+    }
 
     @Volatile
     private var torService: TorService? = null
@@ -319,7 +333,9 @@ class EmbeddedTorManager @Inject constructor(
         _status.value = _status.value.copy(state = State.CREATING_HIDDEN_SERVICE)
 
         try {
-            val savedKey = encryptedPrefs.getString("hs_private_key", null)
+            // GAP-10 / R-10: In ephemeral mode, always generate a fresh ED25519-V3 key
+            // and never persist it to disk. This prevents correlation across sessions.
+            val savedKey = if (ephemeralMode) null else encryptedPrefs.getString("hs_private_key", null)
 
             val portMapping: Map<Int, String> = mapOf(80 to "127.0.0.1:$localPort")
             // jtorctl addOnion returns keys: "onionAddress", "onionPrivKey"
@@ -342,16 +358,17 @@ class EmbeddedTorManager @Inject constructor(
                 return
             }
 
-            // Save private key for persistent .onion across restarts
-            // jtorctl returns the raw key; we must prefix it for reuse
-            if (privateKey != null && savedKey == null) {
+            // Save private key for persistent .onion across restarts (persistent mode only)
+            if (!ephemeralMode && privateKey != null && savedKey == null) {
                 val keyToSave = if (privateKey.contains(":")) {
                     privateKey
                 } else {
                     "ED25519-V3:$privateKey"
                 }
                 encryptedPrefs.edit().putString("hs_private_key", keyToSave).apply()
-                Timber.d("Saved hidden service private key")
+                Timber.d("Saved hidden service private key (persistent mode)")
+            } else if (ephemeralMode) {
+                Timber.d("Ephemeral mode: onion key not persisted — address valid for this session only")
             }
 
             val onionAddr = "$onionHost.onion"

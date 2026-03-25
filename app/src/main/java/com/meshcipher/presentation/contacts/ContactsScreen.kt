@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -176,6 +177,15 @@ fun ContactItem(
             )
         }
 
+        if (contact.safetyNumberVerifiedAt != null && !contact.safetyNumberChanged()) {
+            Icon(
+                Icons.Default.Shield,
+                contentDescription = "Verified",
+                tint = SecureGreen,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+        }
         Icon(
             Icons.Default.ChevronRight,
             contentDescription = "View details",

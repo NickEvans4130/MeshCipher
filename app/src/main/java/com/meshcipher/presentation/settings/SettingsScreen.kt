@@ -74,6 +74,7 @@ fun SettingsScreen(
     val relayServerUrl by viewModel.relayServerUrl.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
     val preferTor by viewModel.preferTor.collectAsState()
+    val ephemeralOnionMode by viewModel.ephemeralOnionMode.collectAsState()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var showCopiedMessage by remember { mutableStateOf(false) }
@@ -367,6 +368,57 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // GAP-10 / R-10: Ephemeral .onion mode
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = SecureGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Ephemeral .onion address",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Text(
+                                text = "Generate a new Tor address each session. Contacts are notified automatically. Recommended for high-risk use.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = ephemeralOnionMode,
+                            onCheckedChange = { viewModel.setEphemeralOnionMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnSecureGreen,
+                                checkedTrackColor = SecureGreen,
+                                uncheckedThumbColor = TextSecondary,
+                                uncheckedTrackColor = TacticalElevated,
+                                uncheckedBorderColor = DividerMedium
+                            )
+                        )
                     }
                 }
             }

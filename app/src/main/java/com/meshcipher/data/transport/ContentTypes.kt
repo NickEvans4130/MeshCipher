@@ -16,4 +16,6 @@ object ContentTypes {
     const val LINK_CONFIRM_REQUEST = 18  // Android → Desktop: confirmation request (signed)
     const val LINK_CONFIRMED = 19        // Desktop → Android: user confirmed
     const val LINK_DENIED = 20           // Desktop → Android: user denied
+    // GAP-10 / R-10: Ephemeral onion address update (signed with identity key)
+    const val ONION_ADDRESS_UPDATE = 21
 }

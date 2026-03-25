@@ -51,6 +51,8 @@ fun ChatScreen(
     val isRecordingVoice by viewModel.voiceRecorder.isRecording.collectAsState()
     val recordingDuration by viewModel.voiceRecorder.recordingDurationMs.collectAsState()
     val activeTransportLabel by viewModel.activeTransportLabel.collectAsState()
+    val showUnverifiedBanner by viewModel.showUnverifiedBanner.collectAsState()
+    val showVerificationNudge by viewModel.showVerificationNudge.collectAsState()
 
     val context = LocalContext.current
     val listState = rememberLazyListState()
@@ -222,6 +224,12 @@ fun ChatScreen(
                     SafetyNumberWarningBanner(onClick = { onNavigateToVerify(c.id) })
                 }
             }
+            if (showUnverifiedBanner) {
+                UnverifiedContactBanner(
+                    onVerifyClick = { contact?.id?.let { onNavigateToVerify(it) } },
+                    onDismissClick = { viewModel.dismissVerificationBanner() }
+                )
+            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -244,6 +252,31 @@ fun ChatScreen(
         }
     }
 
+    if (showVerificationNudge) {
+        val contactName = contact?.displayName ?: "this contact"
+        AlertDialog(
+            onDismissRequest = { viewModel.snoozeVerificationNudge() },
+            title = { Text("Verify Safety Numbers") },
+            text = {
+                Text(
+                    "You've exchanged messages with $contactName without verifying. " +
+                    "Verify now to confirm you're talking to the right person."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.snoozeVerificationNudge()
+                    contact?.id?.let { onNavigateToVerify(it) }
+                }) { Text("Verify now") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.snoozeVerificationNudge() }) {
+                    Text("Remind me later")
+                }
+            }
+        )
+    }
+
     if (mediaPickerVisible) {
         MediaPickerSheet(
             onDismiss = { viewModel.dismissMediaPicker() },
@@ -263,6 +296,39 @@ fun ChatScreen(
                 videoPickerLauncher.launch("video/*")
             }
         )
+    }
+}
+
+@Composable
+private fun UnverifiedContactBanner(onVerifyClick: () -> Unit, onDismissClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = com.meshcipher.presentation.theme.StatusWarning.copy(alpha = 0.12f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Default.Shield,
+                contentDescription = null,
+                tint = com.meshcipher.presentation.theme.StatusWarning,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                "Safety numbers not verified. Your messages could be intercepted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = com.meshcipher.presentation.theme.StatusWarning,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onVerifyClick) {
+                Text("Verify", color = com.meshcipher.presentation.theme.StatusWarning, style = MaterialTheme.typography.labelSmall)
+            }
+            IconButton(onClick = onDismissClick, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = com.meshcipher.presentation.theme.StatusWarning, modifier = Modifier.size(16.dp))
+            }
+        }
     }
 }
 
