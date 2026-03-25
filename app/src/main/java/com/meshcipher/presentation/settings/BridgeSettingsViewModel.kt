@@ -36,15 +36,17 @@ class BridgeSettingsViewModel @Inject constructor(
     private val _validationError = MutableStateFlow<String?>(null)
     val validationError: StateFlow<String?> = _validationError.asStateFlow()
 
-    fun addBridgeLine(line: String) {
+    /** Returns true if the bridge was valid and added, false if validation failed. */
+    fun addBridgeLine(line: String): Boolean {
         val error = TorBridge.validate(line)
         if (error != null) {
             _validationError.value = error
-            return
+            return false
         }
         _validationError.value = null
-        val bridge = TorBridge.parse(line) ?: return
+        val bridge = TorBridge.parse(line) ?: return false
         bridgeRepository.addBridge(bridge)
+        return true
     }
 
     fun removeBridge(bridge: TorBridge) {

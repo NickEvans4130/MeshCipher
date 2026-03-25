@@ -145,13 +145,15 @@ class ReceiveMessageUseCase @Inject constructor(
                 return
             }
 
-            if (!newOnionAddress.endsWith(".onion")) {
-                Timber.w("OnionAddressUpdate: invalid address format — ignored")
+            // Validate strict v3 onion address: exactly 56 base32 chars (a-z2-7) + ".onion"
+            val normalized = newOnionAddress.trim().lowercase()
+            if (!normalized.matches(Regex("^[a-z2-7]{56}\\.onion$"))) {
+                Timber.w("OnionAddressUpdate: invalid v3 onion address format — ignored")
                 return
             }
 
-            contactRepository.updateContact(contact.copy(onionAddress = newOnionAddress))
-            Timber.d("Updated onion address for %s to %s", contact.displayName, newOnionAddress)
+            contactRepository.updateContact(contact.copy(onionAddress = normalized))
+            Timber.d("Updated onion address for %s to %s...", contact.displayName, normalized.take(6))
         } catch (e: Exception) {
             Timber.e(e, "Failed to handle OnionAddressUpdate")
         }

@@ -50,14 +50,14 @@ class TorBridgeRepository @Inject constructor(
         val updated = _bridges.value + bridge
         _bridges.value = updated
         saveToPrefs(updated)
-        Timber.d("Bridge added: %s", bridge.address)
+        Timber.d("Bridge added — total configured: %d", updated.size)
     }
 
     fun removeBridge(bridge: TorBridge) {
         val updated = _bridges.value.filter { it != bridge }
         _bridges.value = updated
         saveToPrefs(updated)
-        Timber.d("Bridge removed: %s", bridge.address)
+        Timber.d("Bridge removed — total configured: %d", updated.size)
     }
 
     fun clearBridges() {

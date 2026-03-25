@@ -142,6 +142,12 @@ class ChatViewModel @Inject constructor(
     private val _bannerDismissed = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     /**
+     * Incremented by [snoozeVerificationNudge] so the [showVerificationNudge] combine
+     * re-evaluates immediately after a snooze is written to prefs.
+     */
+    private val _nudgeSnoozeRefresh = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /**
      * RM-13 / R-08: True when the contact has never verified safety numbers AND the
      * banner has not been dismissed (session or persistent per-contact).
      * The safetyNumberChanged banner (existing) covers the re-verify case.
@@ -162,9 +168,10 @@ class ChatViewModel @Inject constructor(
     /** RM-13 / R-08: True when ≥10 messages with unverified contact, snooze expired, nudge not yet shown. */
     val showVerificationNudge: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
         contact,
-        messages
-    ) { c, msgs ->
-        if (c == null || c.safetyNumberVerifiedAt != null) return@combine false
+        messages,
+        _nudgeSnoozeRefresh
+    ) { c, msgs, _ ->
+        if (c == null || c.safetyNumberVerifiedAt != null || c.safetyNumberChanged()) return@combine false
         val snoozeUntil = verifPrefs.getLong("nudge_snoozed_until_${c.id}", 0L)
         msgs.size >= 10 && System.currentTimeMillis() > snoozeUntil
     }.stateIn(
@@ -489,6 +496,7 @@ class ChatViewModel @Inject constructor(
         val contactId = contact.value?.id ?: return
         val snoozeUntil = System.currentTimeMillis() + 24 * 60 * 60 * 1000L
         verifPrefs.edit().putLong("nudge_snoozed_until_$contactId", snoozeUntil).apply()
+        _nudgeSnoozeRefresh.value++
     }
 
     /**

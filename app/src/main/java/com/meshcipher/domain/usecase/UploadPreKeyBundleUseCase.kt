@@ -4,6 +4,7 @@ import android.util.Base64
 import com.meshcipher.data.encryption.PreKeyManager
 import com.meshcipher.data.remote.api.RelayApiService
 import com.meshcipher.data.remote.dto.UploadPreKeyBundleRequest
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -26,6 +27,18 @@ class UploadPreKeyBundleUseCase @Inject constructor(
             val spkBytes = bundle.signedPreKey?.serialize()
                 ?: return Result.failure(Exception("No signed pre-key available"))
 
+            // RM-10: Encode all three Kyber fields atomically — partial successes would
+            // produce a malformed bundle that appears PQXDH-capable but isn't.
+            val (kyberPreKeyId, kyberPreKey, kyberPreKeySignature) = runCatching {
+                val kid = bundle.kyberPreKeyId.takeIf { it > 0 }
+                val kpub = bundle.kyberPreKey?.serialize()
+                    ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+                val ksig = bundle.kyberPreKeySignature
+                    ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+                if (kid != null && kpub != null && ksig != null) Triple(kid, kpub, ksig)
+                else Triple(null, null, null)
+            }.getOrDefault(Triple(null, null, null))
+
             val request = UploadPreKeyBundleRequest(
                 registrationId = bundle.registrationId,
                 preKeyId = bundle.preKeyId,
@@ -34,18 +47,9 @@ class UploadPreKeyBundleUseCase @Inject constructor(
                 signedPreKey = Base64.encodeToString(spkBytes, Base64.NO_WRAP),
                 signedPreKeySignature = Base64.encodeToString(bundle.signedPreKeySignature, Base64.NO_WRAP),
                 identityKey = Base64.encodeToString(bundle.identityKey.serialize(), Base64.NO_WRAP),
-                // RM-10: include Kyber fields if available
-                kyberPreKeyId = runCatching { bundle.kyberPreKeyId.takeIf { it > 0 } }.getOrNull(),
-                kyberPreKey = runCatching {
-                    bundle.kyberPreKey?.serialize()?.let {
-                        Base64.encodeToString(it, Base64.NO_WRAP)
-                    }
-                }.getOrNull(),
-                kyberPreKeySignature = runCatching {
-                    bundle.kyberPreKeySignature?.let {
-                        Base64.encodeToString(it, Base64.NO_WRAP)
-                    }
-                }.getOrNull()
+                kyberPreKeyId = kyberPreKeyId,
+                kyberPreKey = kyberPreKey,
+                kyberPreKeySignature = kyberPreKeySignature
             )
 
             val response = relayApiService.uploadPreKeyBundle(request)
@@ -55,6 +59,8 @@ class UploadPreKeyBundleUseCase @Inject constructor(
             } else {
                 Result.failure(Exception("Upload failed: HTTP ${response.code()}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.e(e, "Failed to upload pre-key bundle")
             Result.failure(e)

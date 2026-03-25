@@ -53,17 +53,6 @@ class EmbeddedTorManager @Inject constructor(
     val status: StateFlow<EmbeddedTorStatus> = _status.asStateFlow()
 
     @Volatile
-    private var ephemeralMode: Boolean = false
-
-    init {
-        scope.launch {
-            appPreferences.ephemeralOnionMode.collect { enabled ->
-                ephemeralMode = enabled
-            }
-        }
-    }
-
-    @Volatile
     private var torService: TorService? = null
 
     @Volatile
@@ -252,6 +241,12 @@ class EmbeddedTorManager @Inject constructor(
 
     private suspend fun monitorBootstrap(conn: TorControlConnection, service: TorService) {
         try {
+            // GAP-09 / R-11: Apply bridges before bootstrap begins so that Tor uses
+            // them from the first connection attempt. Calling applyBridgesIfConfigured()
+            // here (before the polling loop) ensures SETCONF is sent while Tor has a
+            // control connection but has not yet reached 100% bootstrap.
+            applyBridgesIfConfigured()
+
             // Poll for bootstrap completion
             var bootstrapped = false
             var pollAttempts = 0
@@ -311,7 +306,6 @@ class EmbeddedTorManager @Inject constructor(
             }
 
             Timber.d("Tor fully bootstrapped, SOCKS port: %d", socksPort)
-            applyBridgesIfConfigured()
         } catch (e: Exception) {
             Timber.e(e, "Error monitoring bootstrap")
             _status.value = EmbeddedTorStatus(
@@ -335,8 +329,9 @@ class EmbeddedTorManager @Inject constructor(
         _status.value = _status.value.copy(state = State.CREATING_HIDDEN_SERVICE)
 
         try {
-            // GAP-10 / R-10: In ephemeral mode, always generate a fresh ED25519-V3 key
-            // and never persist it to disk. This prevents correlation across sessions.
+            // GAP-10 / R-10: Read the ephemeral preference synchronously at decision time
+            // to avoid using a stale cached value (race between init collector and first call).
+            val ephemeralMode = appPreferences.ephemeralOnionMode.firstOrNull() ?: false
             val savedKey = if (ephemeralMode) null else encryptedPrefs.getString("hs_private_key", null)
 
             val portMapping: Map<Int, String> = mapOf(80 to "127.0.0.1:$localPort")

@@ -258,6 +258,14 @@ def sanitize_string(value, max_length=255):
     return value.strip()[:max_length]
 
 
+def safe_int(value, field_name):
+    """Convert value to int or raise ValueError with a clear message."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid integer value for field '{field_name}': {value!r}")
+
+
 # ---------------------------------------------------------------------------
 # Health Check (public, rate limited)
 # ---------------------------------------------------------------------------
@@ -1158,33 +1166,46 @@ def upload_pre_key_bundle():
         data.get(f) for f in ("kyber_pre_key_id", "kyber_pre_key", "kyber_pre_key_signature")
     )
 
+    try:
+        reg_id = safe_int(data["registration_id"], "registration_id")
+        pre_key_id = safe_int(data["pre_key_id"], "pre_key_id")
+        spk_id = safe_int(data["signed_pre_key_id"], "signed_pre_key_id")
+        kyber_id = safe_int(data["kyber_pre_key_id"], "kyber_pre_key_id") if pqxdh else None
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     existing = StoredPreKeyBundle.query.filter_by(user_id=user_id).first()
     if existing:
-        existing.registration_id = int(data["registration_id"])
-        existing.pre_key_id = int(data["pre_key_id"])
+        existing.registration_id = reg_id
+        existing.pre_key_id = pre_key_id
         existing.pre_key = sanitize_string(data["pre_key"], 512)
-        existing.signed_pre_key_id = int(data["signed_pre_key_id"])
+        existing.signed_pre_key_id = spk_id
         existing.signed_pre_key = sanitize_string(data["signed_pre_key"], 512)
         existing.signed_pre_key_signature = sanitize_string(data["signed_pre_key_signature"], 512)
         existing.identity_key = sanitize_string(data["identity_key"], 512)
         if pqxdh:
-            existing.kyber_pre_key_id = int(data["kyber_pre_key_id"])
+            existing.kyber_pre_key_id = kyber_id
             existing.kyber_pre_key = sanitize_string(data["kyber_pre_key"], 2048)
             existing.kyber_pre_key_signature = sanitize_string(data["kyber_pre_key_signature"], 512)
+        else:
+            # Clear stale Kyber fields when client no longer advertises PQXDH support
+            existing.kyber_pre_key_id = None
+            existing.kyber_pre_key = None
+            existing.kyber_pre_key_signature = None
         existing.updated_at = datetime.now(timezone.utc)
         db.session.commit()
         return jsonify({"status": "updated", "pqxdh": pqxdh})
 
     bundle = StoredPreKeyBundle(
         user_id=user_id,
-        registration_id=int(data["registration_id"]),
-        pre_key_id=int(data["pre_key_id"]),
+        registration_id=reg_id,
+        pre_key_id=pre_key_id,
         pre_key=sanitize_string(data["pre_key"], 512),
-        signed_pre_key_id=int(data["signed_pre_key_id"]),
+        signed_pre_key_id=spk_id,
         signed_pre_key=sanitize_string(data["signed_pre_key"], 512),
         signed_pre_key_signature=sanitize_string(data["signed_pre_key_signature"], 512),
         identity_key=sanitize_string(data["identity_key"], 512),
-        kyber_pre_key_id=int(data["kyber_pre_key_id"]) if pqxdh else None,
+        kyber_pre_key_id=kyber_id,
         kyber_pre_key=sanitize_string(data["kyber_pre_key"], 2048) if pqxdh else None,
         kyber_pre_key_signature=sanitize_string(data["kyber_pre_key_signature"], 512) if pqxdh else None,
     )

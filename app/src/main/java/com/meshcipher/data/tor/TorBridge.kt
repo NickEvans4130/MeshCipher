@@ -39,12 +39,17 @@ data class TorBridge(
          *   obfs4 <ip:port> [fingerprint] [cert=<cert>] [iat-mode=<n>]
          * Returns null if the format is invalid.
          */
+        // Matches a valid host:port token — hostname/IPv4 (no '=' or other key=value chars)
+        // followed by a colon and 1–5 digits.
+        private val ADDRESS_REGEX = Regex("^[A-Za-z0-9.\\-]+(:\\d{1,5})$")
+
         fun parse(line: String): TorBridge? {
             val parts = line.trim().split("\\s+".toRegex())
             if (parts.size < 2) return null
             val type = parts[0]
             val address = parts[1]
-            if (!address.matches(Regex(".+:\\d{1,5}"))) return null
+            // Reject tokens that contain '=' (key=value params) or don't match host:port
+            if (!address.matches(ADDRESS_REGEX)) return null
             var fingerprint: String? = null
             var cert: String? = null
             for (i in 2 until parts.size) {

@@ -93,8 +93,7 @@ fun BridgeSettingsScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     focusManager.clearFocus()
-                    viewModel.addBridgeLine(bridgeInput)
-                    if (validationError == null) bridgeInput = ""
+                    if (viewModel.addBridgeLine(bridgeInput)) bridgeInput = ""
                 }),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = SecureGreen,
@@ -106,8 +105,7 @@ fun BridgeSettingsScreen(
                 Button(
                     onClick = {
                         focusManager.clearFocus()
-                        viewModel.addBridgeLine(bridgeInput)
-                        if (validationError == null) bridgeInput = ""
+                        if (viewModel.addBridgeLine(bridgeInput)) bridgeInput = ""
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecureGreen)
                 ) { Text("Add bridge") }
