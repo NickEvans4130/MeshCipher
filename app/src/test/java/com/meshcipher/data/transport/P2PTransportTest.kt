@@ -5,6 +5,7 @@ import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.tor.P2PConnectionManager
+import com.meshcipher.data.tor.TorBootstrapVerifier
 import com.meshcipher.domain.model.Contact
 import com.meshcipher.domain.repository.ContactRepository
 import com.meshcipher.domain.repository.ConversationRepository
@@ -21,6 +22,7 @@ import org.junit.Test
 class P2PTransportTest {
 
     private lateinit var p2pConnectionManager: P2PConnectionManager
+    private lateinit var torBootstrapVerifier: TorBootstrapVerifier
     private lateinit var identityManager: IdentityManager
     private lateinit var contactRepository: ContactRepository
     private lateinit var conversationRepository: ConversationRepository
@@ -33,6 +35,8 @@ class P2PTransportTest {
     @Before
     fun setup() {
         p2pConnectionManager = mockk(relaxed = true)
+        torBootstrapVerifier = mockk(relaxed = true)
+        every { torBootstrapVerifier.verify() } returns TorBootstrapVerifier.VerifyResult.Ready
         identityManager = mockk(relaxed = true)
         contactRepository = mockk(relaxed = true)
         conversationRepository = mockk(relaxed = true)
@@ -43,6 +47,7 @@ class P2PTransportTest {
 
         p2pTransport = P2PTransport(
             p2pConnectionManager = p2pConnectionManager,
+            torBootstrapVerifier = torBootstrapVerifier,
             identityManager = identityManager,
             contactRepository = contactRepository,
             conversationRepository = conversationRepository,

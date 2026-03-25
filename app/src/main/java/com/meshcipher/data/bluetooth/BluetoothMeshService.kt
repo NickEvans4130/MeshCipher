@@ -234,6 +234,8 @@ class BluetoothMeshService : Service() {
             delay(MAINTENANCE_INTERVAL_MS)
             bluetoothMeshManager.removeStalePeers()
             meshRouter.cleanupStaleRoutes()
+            // R-14: evict expired GATT rate-limiter entries.
+            gattServerManager.clearStaleRateLimitEntries()
         }
     }
 
