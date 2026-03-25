@@ -44,6 +44,7 @@ object JwtSignatureVerifier {
                 publicKeyPem
                     .replace("-----BEGIN PUBLIC KEY-----", "")
                     .replace("-----END PUBLIC KEY-----", "")
+                    .replace("\r", "")
                     .replace("\n", "")
                     .trim()
             )

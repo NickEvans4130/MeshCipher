@@ -34,7 +34,9 @@ class TokenStorage @Inject constructor(
     }
 
     fun clearToken() {
-        prefs.edit().remove(KEY_TOKEN).apply()
+        // Also clear the relay public key so hasValidToken() cannot validate against
+        // an outdated key after logout. See GAP-04 / R-05.
+        prefs.edit().remove(KEY_TOKEN).remove(KEY_RELAY_PUBLIC_KEY).apply()
     }
 
     // GAP-04 / R-05: Persist the relay's ES256 public key so we can verify JWT signatures

@@ -454,10 +454,13 @@ private fun ChatPane(
                 val file = chooser.selectedFile
                 scope.launch {
                     isSending = true
-                    messagingManager.sendFile(file, contact.contactId).onSuccess { msg ->
-                        messages = messages + msg
+                    try {
+                        messagingManager.sendFile(file, contact.contactId).onSuccess { msg ->
+                            messages = messages + msg
+                        }
+                    } finally {
+                        isSending = false
                     }
-                    isSending = false
                 }
             }
         }

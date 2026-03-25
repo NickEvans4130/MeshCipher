@@ -287,38 +287,40 @@ class ReceiveMessageUseCase @Inject constructor(
         val tempFile = File(context.cacheDir, "desktop_send_${UUID.randomUUID()}_$fileName")
         tempFile.writeBytes(fileBytes)
 
-        val mediaType = when {
-            mimeType.startsWith("image/") -> MediaType.IMAGE
-            mimeType.startsWith("video/") -> MediaType.VIDEO
-            else -> MediaType.VOICE // VOICE used as generic binary fallback
-        }
+        try {
+            val mediaType = when {
+                mimeType.startsWith("image/") -> MediaType.IMAGE
+                mimeType.startsWith("video/") -> MediaType.VIDEO
+                else -> MediaType.VOICE // VOICE used as generic binary fallback
+            }
 
-        val encrypted = mediaEncryptor.encrypt(fileBytes)
+            val encrypted = mediaEncryptor.encrypt(fileBytes)
 
-        val conversationId = conversationRepository.createOrGetConversation(recipientId)
-        val attachment = MediaAttachment(
-            mediaId = UUID.randomUUID().toString(),
-            mediaType = mediaType,
-            fileName = fileName,
-            fileSize = fileBytes.size.toLong(),
-            mimeType = mimeType,
-            localPath = tempFile.absolutePath,
-            encryptionKey = encrypted.keyBase64,
-            encryptionIv = encrypted.ivBase64
-        )
+            val conversationId = conversationRepository.createOrGetConversation(recipientId)
+            val attachment = MediaAttachment(
+                mediaId = UUID.randomUUID().toString(),
+                mediaType = mediaType,
+                fileName = fileName,
+                fileSize = fileBytes.size.toLong(),
+                mimeType = mimeType,
+                localPath = tempFile.absolutePath,
+                encryptionKey = encrypted.keyBase64,
+                encryptionIv = encrypted.ivBase64
+            )
 
-        val result = sendMediaMessageUseCase(
-            conversationId = conversationId,
-            contactId = recipientId,
-            senderId = senderId,
-            mediaAttachment = attachment,
-            encryptedFileBytes = encrypted.encryptedBytes
-        )
+            val result = sendMediaMessageUseCase(
+                conversationId = conversationId,
+                contactId = recipientId,
+                senderId = senderId,
+                mediaAttachment = attachment,
+                encryptedFileBytes = encrypted.encryptedBytes
+            )
 
-        tempFile.delete()
-
-        if (result.isFailure) {
-            Timber.w(result.exceptionOrNull(), "Desktop media send request failed for contact %s", recipientId)
+            if (result.isFailure) {
+                Timber.w(result.exceptionOrNull(), "Desktop media send request failed for contact %s", recipientId)
+            }
+        } finally {
+            tempFile.delete()
         }
     }
 }

@@ -159,6 +159,11 @@ object WifiDirectMessageCodec {
         val recipientId = dis.readUTF()
         val timestamp = dis.readLong()
         val len = dis.readInt()
+        if (len < 0 || len > payload.size) {
+            throw IllegalArgumentException(
+                "TextMessage encryptedContent length $len is invalid (payload size ${payload.size})"
+            )
+        }
         val content = ByteArray(len)
         dis.readFully(content)
         return WifiDirectMessage.TextMessage(senderId, recipientId, timestamp, content)
@@ -186,6 +191,11 @@ object WifiDirectMessageCodec {
         val fileId = dis.readUTF()
         val chunkIndex = dis.readInt()
         val len = dis.readInt()
+        if (len < 0 || len > payload.size) {
+            throw IllegalArgumentException(
+                "FileChunk data length $len is invalid (payload size ${payload.size})"
+            )
+        }
         val data = ByteArray(len)
         dis.readFully(data)
         return WifiDirectMessage.FileChunk(senderId, recipientId, timestamp, fileId, chunkIndex, data)

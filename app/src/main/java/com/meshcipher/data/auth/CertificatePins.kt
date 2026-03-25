@@ -1,40 +1,48 @@
 package com.meshcipher.data.auth
 
+import com.meshcipher.BuildConfig
+
 /**
  * SPKI pin hashes for the relay server TLS leaf certificate (GAP-03 / R-04).
  *
- * Both pins MUST be updated whenever the relay TLS certificate is rotated,
- * before shipping the new build. Pin to the leaf certificate SPKI hash only —
- * never to a CA or intermediate certificate.
+ * Values are injected at build time from local.properties (gitignored). Override the
+ * following keys before building a production release:
+ *
+ *   relay.host=relay.meshcipher.net
+ *   relay.cert.pin.primary=sha256/<base64-SHA256-of-primary-SPKI>
+ *   relay.cert.pin.backup=sha256/<base64-SHA256-of-backup-SPKI>
  *
  * To derive the SPKI hash for a given certificate:
  *   openssl x509 -in cert.pem -pubkey -noout \
  *     | openssl pkey -pubin -outform der \
  *     | openssl dgst -sha256 -binary | base64
  *
- * TODO: Replace all placeholder values with the real relay SPKI hashes and hostname
- *       before the first production deployment.
+ * A startup check in [validate] throws [IllegalStateException] if placeholder values are
+ * still present in a non-debug build, ensuring pinned requests cannot proceed with dummy values.
  */
 object CertificatePins {
 
-    /**
-     * Relay server hostname. Must match the URL the user configures in Settings.
-     * Certificate pinning is applied only to requests destined for this host.
-     * TODO: Update to the actual relay hostname before production deployment.
-     */
-    const val RELAY_HOST = "relay.meshcipher.net"
+    val RELAY_HOST: String = BuildConfig.RELAY_HOST
+    val RELAY_CERT_PIN_PRIMARY: String = BuildConfig.RELAY_CERT_PIN_PRIMARY
+    val RELAY_CERT_PIN_BACKUP: String = BuildConfig.RELAY_CERT_PIN_BACKUP
+
+    private val PLACEHOLDER_PATTERNS = listOf(
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+    )
 
     /**
-     * Primary SPKI SHA-256 pin for the relay leaf TLS certificate.
-     * Format: "sha256/<base64-encoded-SHA256-of-SPKI-DER>"
-     * TODO: Replace with the real pin derived from the production relay certificate.
+     * Called at app startup. Throws [IllegalStateException] in release builds if any pin is
+     * still the placeholder value, preventing requests from proceeding with dummy pins.
      */
-    const val RELAY_CERT_PIN_PRIMARY = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-
-    /**
-     * Backup SPKI pin for certificate rotation events.
-     * Set this to the next certificate's pin before rotating, then swap PRIMARY and BACKUP.
-     * TODO: Replace with the real backup pin before production deployment.
-     */
-    const val RELAY_CERT_PIN_BACKUP = "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+    fun validate() {
+        if (BuildConfig.DEBUG) return // Allow placeholder values in debug/test builds
+        val invalid = listOf(RELAY_CERT_PIN_PRIMARY, RELAY_CERT_PIN_BACKUP)
+            .any { pin -> PLACEHOLDER_PATTERNS.any { placeholder -> pin.contains(placeholder) } }
+        check(!invalid) {
+            "CertificatePins contains placeholder values. " +
+            "Set relay.cert.pin.primary and relay.cert.pin.backup in local.properties " +
+            "before building a release."
+        }
+    }
 }

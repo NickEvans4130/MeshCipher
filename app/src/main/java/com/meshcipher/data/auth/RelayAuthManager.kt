@@ -36,20 +36,29 @@ class RelayAuthManager @Inject constructor(
 
     private val mutex = Mutex()
 
-    // Plain OkHttp client without auth interceptors to avoid circular calls.
-    // GAP-03 / R-04: Same certificate pinner as the Retrofit client — auth requests must
-    // also be protected against MITM. See CertificatePins.kt.
-    private val plainClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .certificatePinner(
-            CertificatePinner.Builder()
-                .add(CertificatePins.RELAY_HOST, CertificatePins.RELAY_CERT_PIN_PRIMARY)
-                .add(CertificatePins.RELAY_HOST, CertificatePins.RELAY_CERT_PIN_BACKUP)
-                .build()
-        )
-        .build()
+    // GAP-03 / R-04: Build the plain OkHttp client using the actual relay host so the
+    // certificate pin is applied to the host the user has configured, not a compile-time
+    // constant that may differ from the runtime relayServerUrl.
+    @Volatile
+    private var cachedAuthClient: Pair<String, OkHttpClient>? = null
+
+    private fun plainClientFor(host: String): OkHttpClient {
+        val cached = cachedAuthClient
+        if (cached != null && cached.first == host) return cached.second
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .certificatePinner(
+                CertificatePinner.Builder()
+                    .add(host, CertificatePins.RELAY_CERT_PIN_PRIMARY)
+                    .add(host, CertificatePins.RELAY_CERT_PIN_BACKUP)
+                    .build()
+            )
+            .build()
+        cachedAuthClient = Pair(host, client)
+        return client
+    }
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -72,33 +81,32 @@ class RelayAuthManager @Inject constructor(
                 }
 
                 val baseUrl = appPreferences.relayServerUrl.first()
+                val host = baseUrl.toHttpUrlOrNull()?.host
+                    ?: run {
+                        Timber.e("Cannot derive host from relay URL: %s", baseUrl)
+                        return@withContext null
+                    }
 
-                // Step 0: Fetch relay public key if not yet stored (GAP-04 / R-05).
-                // Must happen before authentication so the issued token can be verified.
+                // Step 0: Fetch relay public key (GAP-04 / R-05) — mandatory before
+                // accepting any token.  Fail authentication if the key cannot be obtained.
                 if (tokenStorage.getRelayPublicKey() == null) {
-                    fetchAndStorePublicKey(baseUrl)
+                    val fetched = fetchAndStorePublicKey(baseUrl, host)
+                    if (!fetched) {
+                        Timber.e("Could not obtain relay public key — aborting authentication")
+                        return@withContext null
+                    }
                 }
 
                 // Step 1: Register device
-                registerDevice(baseUrl, identity)
+                registerDevice(baseUrl, host, identity)
 
                 // Step 2: Authenticate (challenge-response)
-                val token = authenticate(baseUrl, identity)
+                val token = authenticate(baseUrl, host, identity)
                 if (token != null) {
-                    // Verify the JWT signature before trusting and storing the token.
-                    val pubKey = tokenStorage.getRelayPublicKey()
-                    if (pubKey != null) {
-                        val valid = try {
-                            JwtSignatureVerifier.verify(token, pubKey)
-                        } catch (e: SecurityException) {
-                            Timber.e(e, "JWT signature verification failed — relay may be compromised")
-                            return@withContext null
-                        }
-                        if (!valid) {
-                            Timber.e("JWT signature invalid — rejecting token")
-                            return@withContext null
-                        }
-                    }
+                    // Verify JWT signature before trusting and storing the token.
+                    // On failure: clear stale key, re-fetch, and retry once (key rotation).
+                    val verified = verifyTokenWithRetry(token, baseUrl, host)
+                    if (!verified) return@withContext null
                     tokenStorage.saveToken(token)
                     Timber.d("Relay authentication successful")
                 }
@@ -110,7 +118,34 @@ class RelayAuthManager @Inject constructor(
         }
     }
 
-    private fun registerDevice(baseUrl: String, identity: Identity) {
+    /**
+     * Verifies [token]'s ES256 signature against the stored relay public key.
+     * On failure, clears the cached key, re-fetches it, and retries verification once
+     * to handle relay key rotation without requiring a full re-auth cycle.
+     */
+    private fun verifyTokenWithRetry(token: String, baseUrl: String, host: String): Boolean {
+        val pubKey = tokenStorage.getRelayPublicKey() ?: run {
+            Timber.e("No relay public key available for JWT verification")
+            return false
+        }
+        val firstAttempt = runCatching { JwtSignatureVerifier.verify(token, pubKey) }
+        if (firstAttempt.getOrDefault(false)) return true
+
+        Timber.w("JWT signature verification failed — clearing key and retrying once")
+        tokenStorage.clearToken() // also clears KEY_RELAY_PUBLIC_KEY per fix in TokenStorage
+        val refetched = fetchAndStorePublicKey(baseUrl, host)
+        if (!refetched) {
+            Timber.e("Re-fetch of relay public key failed — cannot verify token")
+            return false
+        }
+        val retryKey = tokenStorage.getRelayPublicKey() ?: return false
+        return runCatching { JwtSignatureVerifier.verify(token, retryKey) }.getOrElse {
+            Timber.e(it, "JWT signature verification failed after key refresh — relay may be compromised")
+            false
+        }
+    }
+
+    private fun registerDevice(baseUrl: String, host: String, identity: Identity) {
         val url = buildUrl(baseUrl, "api/v1/register") ?: return
 
         val relayPublicKey = keyManager.getOrCreateRelayAuthKey()
@@ -125,7 +160,7 @@ class RelayAuthManager @Inject constructor(
             .post(body.toString().toRequestBody(jsonMediaType))
             .build()
 
-        val response = plainClient.newCall(request).execute()
+        val response = plainClientFor(host).newCall(request).execute()
         response.use {
             if (it.isSuccessful) {
                 Timber.d("Device registered with relay: %s", it.body?.string())
@@ -135,7 +170,7 @@ class RelayAuthManager @Inject constructor(
         }
     }
 
-    private fun authenticate(baseUrl: String, identity: Identity): String? {
+    private fun authenticate(baseUrl: String, host: String, identity: Identity): String? {
         // Step 1: Request challenge
         val challengeUrl = buildUrl(baseUrl, "api/v1/auth/challenge") ?: return null
 
@@ -150,7 +185,7 @@ class RelayAuthManager @Inject constructor(
             .post(challengeBody.toString().toRequestBody(jsonMediaType))
             .build()
 
-        val challengeResponse = plainClient.newCall(challengeRequest).execute()
+        val challengeResponse = plainClientFor(host).newCall(challengeRequest).execute()
         val challengeB64: String
         challengeResponse.use {
             if (!it.isSuccessful) {
@@ -183,7 +218,7 @@ class RelayAuthManager @Inject constructor(
             .post(verifyBody.toString().toRequestBody(jsonMediaType))
             .build()
 
-        val verifyResponse = plainClient.newCall(verifyRequest).execute()
+        val verifyResponse = plainClientFor(host).newCall(verifyRequest).execute()
         verifyResponse.use {
             if (!it.isSuccessful) {
                 Timber.e("Verify request failed: %d %s", it.code, it.body?.string())
@@ -196,30 +231,34 @@ class RelayAuthManager @Inject constructor(
 
     /**
      * Fetches the relay's ES256 public key and stores it for JWT signature verification.
-     * GAP-04 / R-05: Called on first run and on signature verification failure.
-     * Failure is non-fatal here — signature verification will fall back to expiry-only
-     * checking until the key is available, but [ensureAuthenticated] will reject tokens
-     * with invalid signatures if a key is stored.
+     * GAP-04 / R-05: Called on first run (mandatory) and on signature verification failure
+     * (retry). Returns true if the key was successfully fetched and stored.
      */
-    private fun fetchAndStorePublicKey(baseUrl: String) {
-        val url = buildUrl(baseUrl, "api/v1/auth/public-key") ?: return
+    private fun fetchAndStorePublicKey(baseUrl: String, host: String): Boolean {
+        val url = buildUrl(baseUrl, "api/v1/auth/public-key") ?: return false
         val request = Request.Builder().url(url).get().build()
-        try {
-            plainClient.newCall(request).execute().use { response ->
+        return try {
+            plainClientFor(host).newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    val body = response.body?.string() ?: return
+                    val body = response.body?.string() ?: return false
                     val json = org.json.JSONObject(body)
                     val pem = json.optString("public_key", "")
                     if (pem.isNotBlank()) {
                         tokenStorage.saveRelayPublicKey(pem)
                         Timber.d("Relay public key fetched and stored")
+                        true
+                    } else {
+                        Timber.w("Relay public-key response contained empty key")
+                        false
                     }
                 } else {
                     Timber.w("Failed to fetch relay public key: %d", response.code)
+                    false
                 }
             }
         } catch (e: Exception) {
             Timber.w(e, "Could not fetch relay public key")
+            false
         }
     }
 

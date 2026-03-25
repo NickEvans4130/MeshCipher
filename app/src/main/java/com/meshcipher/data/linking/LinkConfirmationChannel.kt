@@ -23,7 +23,10 @@ class LinkConfirmationChannel @Inject constructor() {
         data class Denied(val deviceId: String) : Event()
     }
 
-    private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 4)
+    // replay = 1 ensures the event is not lost if DeviceLinkApprovalViewModel hasn't yet
+    // started collecting when ReceiveMessageUseCase emits the confirmation. The deviceId
+    // filter in the ViewModel ensures replayed events from prior sessions are ignored.
+    private val _events = MutableSharedFlow<Event>(replay = 1, extraBufferCapacity = 4)
     val events: SharedFlow<Event> = _events.asSharedFlow()
 
     fun emit(event: Event) {

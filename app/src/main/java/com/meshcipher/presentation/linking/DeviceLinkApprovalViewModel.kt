@@ -61,9 +61,10 @@ class DeviceLinkApprovalViewModel @Inject constructor(
             runCatching {
                 // GAP-05 / R-06: Consume the one-time nonce to prevent QR replay.
                 // The relay returns 409 if the nonce was already used.
-                if (request.nonce.isNotBlank()) {
+                val nonce = request.nonce
+                if (!nonce.isNullOrBlank()) {
                     val nonceResult = relayApiService.consumeNonce(
-                        ConsumeNonceRequest(nonce = request.nonce, deviceId = request.deviceId)
+                        ConsumeNonceRequest(nonce = nonce, deviceId = request.deviceId)
                     )
                     if (!nonceResult.isSuccessful) {
                         val code = nonceResult.code()
@@ -104,7 +105,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                         "publicKeyFingerprint" to phonePublicKeyHex.take(16),
                         "publicKeyHex" to phonePublicKeyHex,
                         "timestamp" to System.currentTimeMillis(),
-                        "nonce" to request.nonce
+                        "nonce" to (request.nonce ?: "")
                     )
                 )
                 internetTransport.sendMessage(
@@ -120,8 +121,12 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                 try {
                     withTimeout(DESKTOP_CONFIRMATION_TIMEOUT_MS) {
                         linkConfirmationChannel.events
-                            .first { it is LinkConfirmationChannel.Event.Confirmed ||
-                                     it is LinkConfirmationChannel.Event.Denied }
+                            .first { event ->
+                                (event is LinkConfirmationChannel.Event.Confirmed &&
+                                    event.deviceId == request.deviceId) ||
+                                (event is LinkConfirmationChannel.Event.Denied &&
+                                    event.deviceId == request.deviceId)
+                            }
                     }.let { event ->
                         when (event) {
                             is LinkConfirmationChannel.Event.Confirmed -> {

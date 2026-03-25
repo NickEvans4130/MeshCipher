@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.*
 import com.meshcipher.data.cleanup.MessageCleanupManager
+import com.meshcipher.data.auth.CertificatePins
 import com.meshcipher.data.auth.RelayAuthManager
 import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.media.MediaFileManager
@@ -64,6 +65,10 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+
+        // GAP-03 / R-04: Fail fast if certificate pins are still placeholder values in a
+        // release build. See CertificatePins.kt and local.properties for configuration.
+        CertificatePins.validate()
 
         Timber.d("MeshCipher application started")
 

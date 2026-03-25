@@ -291,7 +291,10 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
                             )
                             Spacer(Modifier.height(12.dp))
                             OutlinedButton(
-                                onClick = { scope.launch { loadPairingQr() } },
+                                // Incrementing refreshKey restarts both LaunchedEffect(refreshKey)
+                                // blocks: the one that calls loadPairingQr() and the 60-second
+                                // countdown timer, so the new QR gets a fresh timer.
+                                onClick = { refreshKey++ },
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, Accent),
                                 shape = RoundedCornerShape(6.dp)

@@ -6,6 +6,7 @@ import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.tor.P2PConnectionManager
 import com.meshcipher.data.tor.TorBootstrapVerifier
+import com.meshcipher.data.transport.ContentTypes
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaMessageEnvelope
 import com.meshcipher.domain.model.MediaType
@@ -223,7 +224,7 @@ class P2PTransport @Inject constructor(
         val messageId = UUID.randomUUID().toString()
         val payload = Base64.getEncoder().encodeToString(encryptedContent)
 
-        val messageType = if (contentType == 1) P2PMessage.Type.MEDIA else P2PMessage.Type.TEXT
+        val messageType = if (contentType == ContentTypes.MEDIA) P2PMessage.Type.MEDIA else P2PMessage.Type.TEXT
 
         val p2pMessage = P2PMessage(
             type = messageType,

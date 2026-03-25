@@ -29,8 +29,9 @@ data class DeviceLinkRequest(
     val timestamp: Long,
     // GAP-05 / R-06: One-time cryptographic nonce prevents QR replay attacks.
     // Generated fresh for each QR session; consumed via POST /api/v1/link/consume-nonce.
-    // Default empty for backward compatibility with older clients.
-    val nonce: String = ""
+    // Nullable so Gson (used on Android) correctly handles JSON missing this field
+    // instead of keeping the default; callers treat null the same as blank.
+    val nonce: String? = null
 )
 
 /**
