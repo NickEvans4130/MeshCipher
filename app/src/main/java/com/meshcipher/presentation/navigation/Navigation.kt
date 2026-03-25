@@ -18,6 +18,7 @@ import com.meshcipher.presentation.linking.LinkedDevicesScreen
 import com.meshcipher.presentation.linking.QRScannerScreen
 import com.meshcipher.presentation.mesh.MeshNetworkScreen
 import com.meshcipher.presentation.scan.ScanContactScreen
+import com.meshcipher.presentation.settings.BridgeSettingsScreen
 import com.meshcipher.presentation.settings.SettingsScreen
 import com.meshcipher.presentation.share.ShareContactScreen
 import com.meshcipher.presentation.guide.GuideScreen
@@ -158,8 +159,15 @@ fun MeshCipherNavigation(
                 },
                 onLinkedDevicesClick = {
                     navController.navigate(Screen.LinkedDevices.route)
+                },
+                onBridgeSettingsClick = {
+                    navController.navigate(Screen.BridgeSettings.route)
                 }
             )
+        }
+
+        composable(Screen.BridgeSettings.route) {
+            BridgeSettingsScreen(onBackClick = { navController.popBackStack() })
         }
 
         composable(Screen.LinkedDevices.route) {

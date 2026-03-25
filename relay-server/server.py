@@ -151,6 +151,25 @@ class RegisteredDevice(db.Model):
     )
 
 
+class StoredPreKeyBundle(db.Model):
+    """RM-10 / GAP-08: Pre-key bundle storage for PQXDH session initiation."""
+    __tablename__ = "pre_key_bundles"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    registration_id = db.Column(db.Integer, nullable=False)
+    pre_key_id = db.Column(db.Integer, nullable=False)
+    pre_key = db.Column(db.Text, nullable=False)
+    signed_pre_key_id = db.Column(db.Integer, nullable=False)
+    signed_pre_key = db.Column(db.Text, nullable=False)
+    signed_pre_key_signature = db.Column(db.Text, nullable=False)
+    identity_key = db.Column(db.Text, nullable=False)
+    # RM-10: Optional Kyber-1024 fields (null for classical X3DH clients)
+    kyber_pre_key_id = db.Column(db.Integer, nullable=True)
+    kyber_pre_key = db.Column(db.Text, nullable=True)
+    kyber_pre_key_signature = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # In-memory challenge storage (keyed by user_id)
 # In production, use Redis or database-backed storage
 challenges = {}
@@ -237,6 +256,14 @@ def sanitize_string(value, max_length=255):
     if not isinstance(value, str):
         return ""
     return value.strip()[:max_length]
+
+
+def safe_int(value, field_name):
+    """Convert value to int or raise ValueError with a clear message."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid integer value for field '{field_name}': {value!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -1118,6 +1145,104 @@ def set_security_headers(response):
     # Remove server header
     response.headers.pop("Server", None)
     return response
+
+
+# ---------------------------------------------------------------------------
+# Pre-Key Bundle Endpoints (RM-10 / GAP-08 / R-09 — PQXDH)
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/v1/prekeys", methods=["POST"])
+@limiter.limit("20 per minute")
+@require_auth
+@validate_json("registration_id", "pre_key_id", "pre_key", "signed_pre_key_id",
+               "signed_pre_key", "signed_pre_key_signature", "identity_key")
+def upload_pre_key_bundle():
+    """RM-10: Store the caller's pre-key bundle. Kyber fields are optional."""
+    data = g.json
+    user_id = g.user_id
+
+    pqxdh = all(
+        data.get(f) for f in ("kyber_pre_key_id", "kyber_pre_key", "kyber_pre_key_signature")
+    )
+
+    try:
+        reg_id = safe_int(data["registration_id"], "registration_id")
+        pre_key_id = safe_int(data["pre_key_id"], "pre_key_id")
+        spk_id = safe_int(data["signed_pre_key_id"], "signed_pre_key_id")
+        kyber_id = safe_int(data["kyber_pre_key_id"], "kyber_pre_key_id") if pqxdh else None
+    except ValueError:
+        return jsonify({"error": "Invalid numeric field"}), 400
+
+    existing = StoredPreKeyBundle.query.filter_by(user_id=user_id).first()
+    if existing:
+        existing.registration_id = reg_id
+        existing.pre_key_id = pre_key_id
+        existing.pre_key = sanitize_string(data["pre_key"], 512)
+        existing.signed_pre_key_id = spk_id
+        existing.signed_pre_key = sanitize_string(data["signed_pre_key"], 512)
+        existing.signed_pre_key_signature = sanitize_string(data["signed_pre_key_signature"], 512)
+        existing.identity_key = sanitize_string(data["identity_key"], 512)
+        if pqxdh:
+            existing.kyber_pre_key_id = kyber_id
+            existing.kyber_pre_key = sanitize_string(data["kyber_pre_key"], 2048)
+            existing.kyber_pre_key_signature = sanitize_string(data["kyber_pre_key_signature"], 512)
+        else:
+            # Clear stale Kyber fields when client no longer advertises PQXDH support
+            existing.kyber_pre_key_id = None
+            existing.kyber_pre_key = None
+            existing.kyber_pre_key_signature = None
+        existing.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return jsonify({"status": "updated", "pqxdh": pqxdh})
+
+    bundle = StoredPreKeyBundle(
+        user_id=user_id,
+        registration_id=reg_id,
+        pre_key_id=pre_key_id,
+        pre_key=sanitize_string(data["pre_key"], 512),
+        signed_pre_key_id=spk_id,
+        signed_pre_key=sanitize_string(data["signed_pre_key"], 512),
+        signed_pre_key_signature=sanitize_string(data["signed_pre_key_signature"], 512),
+        identity_key=sanitize_string(data["identity_key"], 512),
+        kyber_pre_key_id=kyber_id,
+        kyber_pre_key=sanitize_string(data["kyber_pre_key"], 2048) if pqxdh else None,
+        kyber_pre_key_signature=sanitize_string(data["kyber_pre_key_signature"], 512) if pqxdh else None,
+    )
+    try:
+        db.session.add(bundle)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Failed to store pre-key bundle"}), 500
+    return jsonify({"status": "stored", "pqxdh": pqxdh}), 201
+
+
+@app.route("/api/v1/prekeys/<string:user_id>", methods=["GET"])
+@limiter.limit("60 per minute")
+@require_auth
+def get_pre_key_bundle(user_id):
+    """RM-10: Retrieve a user's pre-key bundle for session initiation."""
+    bundle = StoredPreKeyBundle.query.filter_by(user_id=sanitize_string(user_id)).first()
+    if not bundle:
+        return jsonify({"error": "No pre-key bundle found for user"}), 404
+
+    response = {
+        "registration_id": bundle.registration_id,
+        "pre_key_id": bundle.pre_key_id,
+        "pre_key": bundle.pre_key,
+        "signed_pre_key_id": bundle.signed_pre_key_id,
+        "signed_pre_key": bundle.signed_pre_key,
+        "signed_pre_key_signature": bundle.signed_pre_key_signature,
+        "identity_key": bundle.identity_key,
+        "pqxdh_supported": bundle.kyber_pre_key is not None,
+    }
+    if bundle.kyber_pre_key:
+        response["kyber_pre_key_id"] = bundle.kyber_pre_key_id
+        response["kyber_pre_key"] = bundle.kyber_pre_key
+        response["kyber_pre_key_signature"] = bundle.kyber_pre_key_signature
+
+    return jsonify(response)
 
 
 # ---------------------------------------------------------------------------

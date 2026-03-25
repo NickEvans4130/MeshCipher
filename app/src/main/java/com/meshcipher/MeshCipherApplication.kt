@@ -16,6 +16,7 @@ import com.meshcipher.data.transport.P2PTransport
 import com.meshcipher.data.transport.WifiDirectTransport
 import com.meshcipher.data.worker.MessageCleanupWorker
 import com.meshcipher.data.worker.MessageSyncWorker
+import com.meshcipher.data.encryption.PreKeyManager
 import com.meshcipher.domain.usecase.SafetyNumberManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -57,6 +58,9 @@ class MeshCipherApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var safetyNumberManager: SafetyNumberManager
 
+    @Inject
+    lateinit var preKeyManager: PreKeyManager
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -69,6 +73,10 @@ class MeshCipherApplication : Application(), Configuration.Provider {
         // GAP-03 / R-04: Fail fast if certificate pins are still placeholder values in a
         // release build. See CertificatePins.kt and local.properties for configuration.
         CertificatePins.validate()
+
+        // RM-10 / GAP-08: Ensure Kyber-1024 pre-key is generated on first run.
+        preKeyManager.ensureKyberPreKey()
+        preKeyManager.ensureClassicPreKeys()
 
         Timber.d("MeshCipher application started")
 

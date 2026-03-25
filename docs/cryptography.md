@@ -240,3 +240,50 @@ EXIF orientation is read and applied to the bitmap before stripping, so photos a
 - Communication is device-to-device only
 - WiFi Direct: MAC addresses visible to paired device
 - Bluetooth Mesh: BLE advertisements contain hashed device/user IDs
+
+## Post-Quantum Cryptography (PQXDH) — RM-10 / GAP-08 / R-09
+
+### Motivation
+
+All classical Signal Protocol sessions use X25519 (X3DH) for key agreement. A sufficiently capable quantum computer could break X25519, exposing all previously captured ciphertext ("harvest-now-decrypt-later" attack). MeshCipher's target users — journalists, activists, first responders — generate communications whose long-term confidentiality is critical.
+
+### Hybrid Key Agreement (PQXDH)
+
+MeshCipher implements PQXDH (Post-Quantum Extended Diffie-Hellman) as specified at https://signal.org/docs/specifications/pqxdh/. PQXDH extends X3DH by adding a CRYSTALS-Kyber-1024 KEM alongside the classical X25519 exchange.
+
+The combined session key is:
+
+```
+K = KDF(X25519_output || Kyber_KEM_output)
+```
+
+Breaking session security requires breaking **both** X25519 and Kyber-1024 simultaneously. The KDF construction and Kyber encapsulation are handled internally by libsignal-client 0.44.0 when `SessionBuilder.process()` is called with a `PreKeyBundle` that includes Kyber keys.
+
+### Key Generation
+
+- Kyber-1024 key pair: `KEMKeyPair.generate(KEMKeyType.KYBER_1024)` via libsignal
+- The Kyber public key is signed with the local ED25519 identity key: `Curve.calculateSignature(identityKey.privateKey, kyberPublicKey.serialize())`
+- Kyber pre-keys are stored in `SignalProtocolStoreImpl` under the prefix `kyber_prekey:` in `EncryptedSharedPreferences` (AES-256-GCM at rest)
+- Kyber private key material is never logged or transmitted
+
+### Pre-Key Bundle Format
+
+PQXDH-capable clients upload the following to the relay's `/api/v1/prekeys`:
+- Classical EC pre-key (X25519)
+- Signed pre-key (X25519, signed with identity key)
+- Identity key (ED25519)
+- Kyber-1024 pre-key (public key + ED25519 signature)
+
+### Backwards Compatibility
+
+If a contact's pre-key bundle does not include Kyber fields (`kyber_pre_key` is absent), `PreKeyManager.buildRemoteBundle()` builds a classical X3DH `PreKeyBundle` and `SessionBuilder.process()` falls back to X3DH. A warning is logged: "Remote bundle has no Kyber key — falling back to classical X3DH (session is not PQ-protected)".
+
+This means PQXDH-capable clients can communicate with older clients. However, sessions with older clients are not post-quantum protected.
+
+### Implementation Files
+
+- `data/encryption/PreKeyManager.kt` — Kyber pre-key generation, storage, bundle construction
+- `data/encryption/SignalProtocolStoreImpl.kt` — `KyberPreKeyStore` implementation (prefix `kyber_prekey:`)
+- `data/encryption/SignalProtocolManager.kt` — session creation via `SessionBuilder.process()`
+- `domain/usecase/UploadPreKeyBundleUseCase.kt` — uploads PQXDH bundle to relay
+- `relay-server/server.py` — `StoredPreKeyBundle` model, `/api/v1/prekeys` POST + GET

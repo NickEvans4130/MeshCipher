@@ -29,6 +29,16 @@ class SmartModeManager @Inject constructor() {
     private val _activeTransport = MutableStateFlow(ActiveTransport.NONE)
     val activeTransport: StateFlow<ActiveTransport> = _activeTransport
 
+    private val _relayOffline = MutableStateFlow(false)
+    val relayOffline: StateFlow<Boolean> = _relayOffline
+
+    fun reportRelayOffline(offline: Boolean) {
+        if (_relayOffline.value != offline) {
+            Timber.d("Relay status changed: %s", if (offline) "OFFLINE" else "ONLINE")
+            _relayOffline.value = offline
+        }
+    }
+
     fun reportTransportUsed(transport: ActiveTransport) {
         if (_activeTransport.value != transport) {
             Timber.d("Smart Mode: active transport -> %s", transport.name)
