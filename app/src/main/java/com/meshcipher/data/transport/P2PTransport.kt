@@ -5,6 +5,7 @@ import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
 import com.meshcipher.data.tor.P2PConnectionManager
+import com.meshcipher.data.tor.TorBootstrapVerifier
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaMessageEnvelope
 import com.meshcipher.domain.model.MediaType
@@ -29,6 +30,7 @@ import javax.inject.Singleton
 @Singleton
 class P2PTransport @Inject constructor(
     private val p2pConnectionManager: P2PConnectionManager,
+    private val torBootstrapVerifier: TorBootstrapVerifier,
     private val identityManager: IdentityManager,
     private val contactRepository: ContactRepository,
     private val conversationRepository: ConversationRepository,
@@ -189,6 +191,14 @@ class P2PTransport @Inject constructor(
         encryptedContent: ByteArray,
         contentType: Int = 0
     ): Result<String> {
+        // R-12: Verify Tor is fully bootstrapped before sending — prevents messages being
+        // sent over a partial circuit or before the SOCKS proxy is ready.
+        val torCheck = torBootstrapVerifier.verify()
+        if (torCheck is TorBootstrapVerifier.VerifyResult.NotReady) {
+            Timber.w("P2P send blocked: %s", torCheck.reason)
+            return Result.failure(Exception(torCheck.reason))
+        }
+
         if (!isAvailable()) {
             Timber.w("P2P Tor not available, isRunning=%b", p2pConnectionManager.isRunning())
             return Result.failure(Exception("P2P Tor not running"))
