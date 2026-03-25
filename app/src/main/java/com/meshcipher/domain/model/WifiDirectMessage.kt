@@ -1,8 +1,8 @@
 package com.meshcipher.domain.model
 
-import java.io.Serializable
-
-sealed class WifiDirectMessage : Serializable {
+// GAP-07 / R-07: Serializable removed — WifiDirectMessage is serialised exclusively via
+// WifiDirectMessageCodec (typed binary protocol). Java ObjectInputStream is no longer used.
+sealed class WifiDirectMessage {
     abstract val senderId: String
     abstract val recipientId: String
     abstract val timestamp: Long
@@ -83,7 +83,6 @@ sealed class WifiDirectMessage : Serializable {
     ) : WifiDirectMessage()
 
     companion object {
-        private const val serialVersionUID = 1L
         const val CHUNK_SIZE = 64 * 1024 // 64KB chunks
     }
 }
