@@ -82,6 +82,11 @@ class BluetoothMeshService : Service() {
             maintenanceLoop()
         }
 
+        // GAP-01 / R-01: rotate BLE advertisement pseudonym on each epoch boundary.
+        serviceScope.launch {
+            epochRotationLoop()
+        }
+
         Timber.d("BluetoothMeshService created")
     }
 
@@ -209,6 +214,18 @@ class BluetoothMeshService : Service() {
                 senderContact.displayName, conversationId)
         } catch (e: Exception) {
             Timber.e(e, "Failed to deliver mesh message locally")
+        }
+    }
+
+    private suspend fun epochRotationLoop() {
+        while (serviceScope.isActive) {
+            // Sleep until the next epoch boundary, then rotate
+            val now = System.currentTimeMillis()
+            val epochDuration = BleEpochKeyManager.EPOCH_DURATION_MS
+            val msUntilNextEpoch = epochDuration - (now % epochDuration)
+            delay(msUntilNextEpoch)
+            Timber.d("BLE epoch rotating — restarting advertisement with new pseudonym UUID")
+            bluetoothMeshManager.rotateIdentity()
         }
     }
 

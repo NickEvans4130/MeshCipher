@@ -28,7 +28,9 @@ import javax.inject.Singleton
 @Singleton
 class BluetoothMeshManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val identityManager: IdentityManager
+    private val identityManager: IdentityManager,
+    // GAP-01 / R-01: epoch-rotating advertisement pseudonyms
+    private val identityProvider: BleAdvertisementIdentityProvider
 ) {
     private val bluetoothManager: BluetoothManager? =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -68,9 +70,12 @@ class BluetoothMeshManager @Inject constructor(
             .setTimeout(0)
             .build()
 
+        // GAP-01 / R-01: advertise with the current epoch's pseudonym UUID so the device
+        // cannot be correlated across epoch boundaries by passive observers.
+        val epochUuid = identityProvider.currentEpochUuid()
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .addServiceUuid(ParcelUuid(epochUuid))
             .build()
 
         val callback = object : AdvertiseCallback() {
@@ -119,8 +124,13 @@ class BluetoothMeshManager @Inject constructor(
         scanner = bluetoothAdapter?.bluetoothLeScanner
             ?: return Result.failure(Exception("BLE scanning not supported"))
 
-        val scanFilter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(SERVICE_UUID))
+        // GAP-01 / R-01: scan for both the current and previous epoch UUIDs so devices that
+        // haven't rotated yet remain discoverable during the transition window.
+        val currentFilter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(identityProvider.currentEpochUuid()))
+            .build()
+        val previousFilter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(identityProvider.previousEpochUuid()))
             .build()
 
         val scanSettings = ScanSettings.Builder()
@@ -145,7 +155,7 @@ class BluetoothMeshManager @Inject constructor(
         scanCallback = callback
 
         return try {
-            scanner?.startScan(listOf(scanFilter), scanSettings, callback)
+            scanner?.startScan(listOf(currentFilter, previousFilter), scanSettings, callback)
             _isScanning.value = true
             Timber.d("BLE scanning started")
             Result.success(Unit)
@@ -169,6 +179,19 @@ class BluetoothMeshManager @Inject constructor(
         scanCallback = null
         _isScanning.value = false
         Timber.d("BLE scanning stopped")
+    }
+
+    /**
+     * GAP-01 / R-01: Called at each epoch boundary to restart advertising and scanning with the
+     * new pseudonym UUID.  Must be invoked from a coroutine (startAdvertising is suspend).
+     */
+    suspend fun rotateIdentity() {
+        val wasAdvertising = _isAdvertising.value
+        val wasScanning = _isScanning.value
+        if (wasAdvertising) stopAdvertising()
+        if (wasScanning) stopScanning()
+        if (wasAdvertising) startAdvertising()
+        if (wasScanning) startScanning()
     }
 
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
