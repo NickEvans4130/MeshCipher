@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Base64
 import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
+import com.meshcipher.data.linking.LinkConfirmationChannel
 import com.meshcipher.data.remote.dto.QueuedMessage
 import com.meshcipher.data.service.MessageForwardingService
+import com.meshcipher.data.transport.ContentTypes
 import com.meshcipher.data.transport.TransportManager
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaMessageEnvelope
@@ -32,6 +34,7 @@ class ReceiveMessageUseCase @Inject constructor(
     private val forwardingService: MessageForwardingService,
     private val sendMessageUseCase: SendMessageUseCase,
     private val sendMediaMessageUseCase: SendMediaMessageUseCase,
+    private val linkConfirmationChannel: LinkConfirmationChannel,
     @ApplicationContext private val context: Context
 ) {
 
@@ -86,11 +89,41 @@ class ReceiveMessageUseCase @Inject constructor(
 
     private suspend fun processQueuedMessage(queued: QueuedMessage) {
         when (queued.contentType) {
-            1 -> processMediaMessage(queued)
-            13 -> processUnlinkNotification(queued)
-            16 -> processDesktopSendRequest(queued)
-            17 -> processDesktopMediaRequest(queued)
+            ContentTypes.MEDIA -> processMediaMessage(queued)
+            ContentTypes.DEVICE_UNLINK -> processUnlinkNotification(queued)
+            ContentTypes.DESKTOP_SEND_REQUEST -> processDesktopSendRequest(queued)
+            ContentTypes.DESKTOP_MEDIA_REQUEST -> processDesktopMediaRequest(queued)
+            // GAP-06 / R-06: Desktop sent its decision on the link confirmation request
+            ContentTypes.LINK_CONFIRMED -> processLinkConfirmed(queued)
+            ContentTypes.LINK_DENIED -> processLinkDenied(queued)
             else -> processTextMessage(queued)
+        }
+    }
+
+    /**
+     * Desktop confirmed the link — broadcast so DeviceLinkApprovalViewModel can finalise.
+     * The payload contains the requesting deviceId so we know which pending link was confirmed.
+     */
+    private fun processLinkConfirmed(queued: QueuedMessage) {
+        val deviceId = extractDeviceIdFromPayload(queued) ?: return
+        linkConfirmationChannel.emit(LinkConfirmationChannel.Event.Confirmed(deviceId))
+        Timber.d("Desktop confirmed link for device %s", deviceId)
+    }
+
+    private fun processLinkDenied(queued: QueuedMessage) {
+        val deviceId = extractDeviceIdFromPayload(queued) ?: return
+        linkConfirmationChannel.emit(LinkConfirmationChannel.Event.Denied(deviceId))
+        Timber.d("Desktop denied link for device %s", deviceId)
+    }
+
+    private fun extractDeviceIdFromPayload(queued: QueuedMessage): String? {
+        return try {
+            val bytes = android.util.Base64.decode(queued.encryptedContent, android.util.Base64.NO_WRAP)
+            val json = org.json.JSONObject(String(bytes))
+            json.optString("deviceId").ifBlank { null }
+        } catch (e: Exception) {
+            Timber.w(e, "Could not extract deviceId from link confirmation payload")
+            null
         }
     }
 

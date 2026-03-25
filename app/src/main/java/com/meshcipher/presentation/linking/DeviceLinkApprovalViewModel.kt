@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.linking.LinkConfirmationChannel
 import com.meshcipher.data.local.database.ContactDao
-import com.meshcipher.data.repository.LinkedDevicesRepository
 import com.meshcipher.data.remote.api.RelayApiService
 import com.meshcipher.data.remote.dto.ConsumeNonceRequest
+import com.meshcipher.data.repository.LinkedDevicesRepository
+import com.meshcipher.data.transport.ContentTypes
 import com.meshcipher.data.transport.InternetTransport
 import com.meshcipher.shared.domain.model.DeviceLinkRequest
 import com.meshcipher.shared.domain.model.DeviceLinkResponse
@@ -16,21 +18,27 @@ import com.meshcipher.shared.domain.model.LinkedDevice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.security.MessageDigest
 import java.util.Base64
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import javax.inject.Inject
 
 sealed class ApprovalState {
     object Idle : ApprovalState()
     object Loading : ApprovalState()
+    /** Phone approved the request; awaiting desktop confirmation (GAP-06 / R-06). */
+    object AwaitingDesktopConfirmation : ApprovalState()
     object Approved : ApprovalState()
     object Denied : ApprovalState()
     data class Error(val message: String) : ApprovalState()
 }
+
+private const val DESKTOP_CONFIRMATION_TIMEOUT_MS = 2 * 60 * 1000L // 2 minutes
 
 @HiltViewModel
 class DeviceLinkApprovalViewModel @Inject constructor(
@@ -38,6 +46,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
     private val repository: LinkedDevicesRepository,
     private val internetTransport: InternetTransport,
     private val relayApiService: RelayApiService,
+    private val linkConfirmationChannel: LinkConfirmationChannel,
     private val contactDao: ContactDao
 ) : ViewModel() {
 
@@ -69,7 +78,8 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                 val phonePublicKeyHex = identity.hardwarePublicKey
                     .joinToString("") { "%02x".format(it) }
 
-                // Store the linked device locally
+                // GAP-06 / R-06: Store device as pending (approved=false) until the desktop
+                // confirms. The device does not become active until LINK_CONFIRMED is received.
                 repository.upsert(
                     LinkedDevice(
                         deviceId = request.deviceId,
@@ -77,32 +87,79 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                         deviceType = request.deviceType ?: DeviceType.DESKTOP,
                         publicKeyHex = request.publicKeyHex,
                         linkedAt = System.currentTimeMillis(),
-                        approved = true
+                        approved = false
                     )
                 )
 
-                // Send approval response to the desktop via relay
-                val response = DeviceLinkResponse(
-                    approved = true,
-                    phoneDeviceId = identity.deviceId,
-                    phoneUserId = identity.userId,
-                    phonePublicKeyHex = phonePublicKeyHex
-                )
                 val desktopUserId = userIdFromPublicKeyHex(request.publicKeyHex)
+
+                // Send confirmation request to the desktop (content_type=18).
+                // Payload includes device name, public key fingerprint, timestamp, and nonce
+                // so the desktop can show a meaningful confirmation dialog and tie the event
+                // to this specific enrolment session.
+                val confirmationPayload = gson.toJson(
+                    mapOf(
+                        "deviceId" to identity.deviceId,
+                        "deviceName" to identity.displayName,
+                        "publicKeyFingerprint" to phonePublicKeyHex.take(16),
+                        "publicKeyHex" to phonePublicKeyHex,
+                        "timestamp" to System.currentTimeMillis(),
+                        "nonce" to request.nonce
+                    )
+                )
                 internetTransport.sendMessage(
                     senderId = identity.userId,
                     recipientId = desktopUserId,
-                    encryptedContent = gson.toJson(response).toByteArray(),
-                    contentType = 10
+                    encryptedContent = confirmationPayload.toByteArray(),
+                    contentType = ContentTypes.LINK_CONFIRM_REQUEST
                 )
 
-                // Push all contacts to the desktop so they appear immediately
-                sendContactSync(
-                    desktopDeviceId = desktopUserId,
-                    senderUserId = identity.userId
-                )
+                _state.value = ApprovalState.AwaitingDesktopConfirmation
+
+                // Wait for desktop to confirm or deny within 2 minutes (GAP-06 / R-06).
+                try {
+                    withTimeout(DESKTOP_CONFIRMATION_TIMEOUT_MS) {
+                        linkConfirmationChannel.events
+                            .first { it is LinkConfirmationChannel.Event.Confirmed ||
+                                     it is LinkConfirmationChannel.Event.Denied }
+                    }.let { event ->
+                        when (event) {
+                            is LinkConfirmationChannel.Event.Confirmed -> {
+                                // Desktop confirmed — mark the device as fully approved
+                                repository.approve(request.deviceId)
+                                // Now send the DeviceLinkResponse (type=10) so desktop
+                                // can store the phone's identity details
+                                val linkResponse = DeviceLinkResponse(
+                                    approved = true,
+                                    phoneDeviceId = identity.deviceId,
+                                    phoneUserId = identity.userId,
+                                    phonePublicKeyHex = phonePublicKeyHex
+                                )
+                                internetTransport.sendMessage(
+                                    senderId = identity.userId,
+                                    recipientId = desktopUserId,
+                                    encryptedContent = gson.toJson(linkResponse).toByteArray(),
+                                    contentType = ContentTypes.DEVICE_LINK
+                                )
+                                sendContactSync(
+                                    desktopDeviceId = desktopUserId,
+                                    senderUserId = identity.userId
+                                )
+                                _state.value = ApprovalState.Approved
+                            }
+                            is LinkConfirmationChannel.Event.Denied -> {
+                                repository.revoke(request.deviceId)
+                                _state.value = ApprovalState.Denied
+                            }
+                        }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    // Desktop did not confirm within 2 minutes — cancel the pending link
+                    repository.revoke(request.deviceId)
+                    error("Desktop did not confirm within 2 minutes. The link request has been cancelled.")
+                }
             }.fold(
-                onSuccess = { _state.value = ApprovalState.Approved },
+                onSuccess = { /* state already set in the block above */ },
                 onFailure = { e ->
                     Timber.e(e, "Device link approval failed")
                     _state.value = ApprovalState.Error(e.message ?: "Approval failed")
@@ -125,7 +182,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                     senderId = identity.userId,
                     recipientId = userIdFromPublicKeyHex(request.publicKeyHex),
                     encryptedContent = gson.toJson(response).toByteArray(),
-                    contentType = 10
+                    contentType = ContentTypes.DEVICE_LINK
                 )
             }.fold(
                 onSuccess = { _state.value = ApprovalState.Denied },
@@ -155,7 +212,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
             senderId = senderUserId,
             recipientId = desktopDeviceId,
             encryptedContent = payloadBytes,
-            contentType = 11
+            contentType = ContentTypes.CONTACT_SYNC
         )
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meshcipher.desktop.data.CONTENT_TYPE_DEVICE_UNLINK
 import com.meshcipher.desktop.data.DeviceLinkManager
+import com.meshcipher.desktop.data.LinkConfirmationRequest
 import com.meshcipher.desktop.data.LinkedPhone
 import com.meshcipher.desktop.data.MessagingManager
 import kotlinx.coroutines.delay
@@ -55,6 +56,9 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
     var displayUserId by remember { mutableStateOf("") }
     var linkedPhone by remember { mutableStateOf<LinkedPhone?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+
+    // GAP-06 / R-06: Pending link confirmation request from Android
+    var pendingConfirmation by remember { mutableStateOf<LinkConfirmationRequest?>(null) }
 
     suspend fun loadPairingQr() {
         pairingQrLoading = true
@@ -90,6 +94,30 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
         DeviceLinkManager.deviceLinked.collect { refreshKey++ }
     }
 
+    // GAP-06 / R-06: Collect link confirmation requests from Android
+    LaunchedEffect(messagingManager) {
+        messagingManager?.linkConfirmationPending?.collect { req ->
+            pendingConfirmation = req
+        }
+    }
+
+    // GAP-06 / R-06: Auto-dismiss + deny if desktop user ignores the dialog for 2 minutes
+    val currentPending = pendingConfirmation
+    LaunchedEffect(currentPending) {
+        if (currentPending == null) return@LaunchedEffect
+        delay(2 * 60 * 1000L) // 2 minutes
+        if (pendingConfirmation == currentPending) {
+            // Still pending after 2 min — auto-deny
+            pendingConfirmation = null
+            scope.launch {
+                val pubKeyBytes = currentPending.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                messagingManager?.sendLinkDenied(phoneUserId, currentPending.deviceId)
+            }
+        }
+    }
+
     // GAP-05 / R-06: Countdown timer — auto-expire the pairing QR after 60 seconds.
     // The desktop generates a new nonce on each refresh, so the expired QR is permanently invalid.
     LaunchedEffect(refreshKey) {
@@ -100,6 +128,88 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
         }
         qrExpired = true
         pairingQr = null
+    }
+
+    // GAP-06 / R-06: Desktop confirmation dialog — shown when Android approves a link
+    // and sends content_type=18. The user must explicitly confirm or deny before the link
+    // becomes active on Android.
+    val confirmation = pendingConfirmation
+    if (confirmation != null) {
+        AlertDialog(
+            onDismissRequest = { /* require explicit action */ },
+            title = {
+                Text(
+                    "LINK REQUEST",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Accent,
+                    fontFamily = Monospace,
+                    letterSpacing = 2.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "A device wants to link to this desktop:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Surface)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(confirmation.deviceName.ifBlank { "Unknown device" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary)
+                        Text(
+                            "Fingerprint: ${confirmation.publicKeyFingerprint}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary,
+                            fontFamily = Monospace
+                        )
+                    }
+                    Text(
+                        "Tap Confirm to approve, or Deny to block this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingConfirmation = null
+                    scope.launch {
+                        // Derive phoneUserId from the public key (matches Android algorithm)
+                        val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                        val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                        messagingManager?.sendLinkConfirmed(phoneUserId, confirmation.deviceId)
+                        refreshKey++
+                    }
+                }) {
+                    Text("CONFIRM", color = Accent, fontFamily = Monospace, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingConfirmation = null
+                    scope.launch {
+                        val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                        val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                        messagingManager?.sendLinkDenied(phoneUserId, confirmation.deviceId)
+                    }
+                }) {
+                    Text("DENY", color = ErrorRed, fontFamily = Monospace)
+                }
+            },
+            containerColor = Surface,
+            titleContentColor = Accent
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
