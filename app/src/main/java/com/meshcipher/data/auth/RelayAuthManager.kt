@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.CertificatePinner
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -35,11 +36,19 @@ class RelayAuthManager @Inject constructor(
 
     private val mutex = Mutex()
 
-    // Plain OkHttp client without auth interceptors to avoid circular calls
+    // Plain OkHttp client without auth interceptors to avoid circular calls.
+    // GAP-03 / R-04: Same certificate pinner as the Retrofit client — auth requests must
+    // also be protected against MITM. See CertificatePins.kt.
     private val plainClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .certificatePinner(
+            CertificatePinner.Builder()
+                .add(CertificatePins.RELAY_HOST, CertificatePins.RELAY_CERT_PIN_PRIMARY)
+                .add(CertificatePins.RELAY_HOST, CertificatePins.RELAY_CERT_PIN_BACKUP)
+                .build()
+        )
         .build()
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
