@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meshcipher.desktop.data.CONTENT_TYPE_DEVICE_UNLINK
 import com.meshcipher.desktop.data.DeviceLinkManager
+import com.meshcipher.desktop.data.LinkConfirmationRequest
 import com.meshcipher.desktop.data.LinkedPhone
 import com.meshcipher.desktop.data.MessagingManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.image.BufferedImage
 import java.text.SimpleDateFormat
@@ -37,12 +39,20 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager? = null) {
+fun LinkDeviceScreen(
+    onBack: () -> Unit = {},
+    messagingManager: MessagingManager? = null,
+    pendingConfirmation: LinkConfirmationRequest? = null,
+    onPendingConfirmationChange: (LinkConfirmationRequest?) -> Unit = {}
+) {
     val scope = rememberCoroutineScope()
 
     // Pairing QR (phone scans to link)
     var pairingQr by remember { mutableStateOf<ImageBitmap?>(null) }
     var pairingQrLoading by remember { mutableStateOf(true) }
+    // GAP-05 / R-06: QR expires after 60 seconds to limit the replay window.
+    var qrExpired by remember { mutableStateOf(false) }
+    var qrSecondsRemaining by remember { mutableStateOf(60) }
 
     // Contact QR (contacts scan to add this desktop)
     var contactQr by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -55,6 +65,8 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
     suspend fun loadPairingQr() {
         pairingQrLoading = true
         pairingQr = null
+        qrExpired = false
+        qrSecondsRemaining = 60
         runCatching { DeviceLinkManager.generateQrImage(320).toComposeImageBitmap() }
             .onSuccess { pairingQr = it }
         pairingQrLoading = false
@@ -82,6 +94,104 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
 
     LaunchedEffect(Unit) {
         DeviceLinkManager.deviceLinked.collect { refreshKey++ }
+    }
+
+    // GAP-05 / R-06: Countdown timer — auto-expire the pairing QR after 60 seconds.
+    // The desktop generates a new nonce on each refresh, so the expired QR is permanently invalid.
+    // Keyed on both refreshKey and linkedPhone so the timer restarts when the phone links
+    // (linkedPhone transitions null → non-null) without requiring a manual refresh.
+    LaunchedEffect(refreshKey, linkedPhone) {
+        if (linkedPhone != null) return@LaunchedEffect
+        for (remaining in 59 downTo 0) {
+            delay(1_000L)
+            qrSecondsRemaining = remaining
+        }
+        qrExpired = true
+        pairingQr = null
+    }
+
+    // GAP-06 / R-06: Desktop confirmation dialog — shown when Android approves a link
+    // and sends content_type=18. The user must explicitly confirm or deny before the link
+    // becomes active on Android.
+    val confirmation = pendingConfirmation
+    if (confirmation != null) {
+        AlertDialog(
+            onDismissRequest = { /* require explicit action */ },
+            title = {
+                Text(
+                    "LINK REQUEST",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Accent,
+                    fontFamily = Monospace,
+                    letterSpacing = 2.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "A device wants to link to this desktop:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Surface)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(confirmation.deviceName.ifBlank { "Unknown device" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary)
+                        Text(
+                            "Fingerprint: ${confirmation.publicKeyFingerprint}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary,
+                            fontFamily = Monospace
+                        )
+                    }
+                    Text(
+                        "Tap Confirm to approve, or Deny to block this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        // Derive phoneUserId from the public key (matches Android algorithm)
+                        val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                        val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                        messagingManager?.sendLinkConfirmed(phoneUserId, confirmation.deviceId)
+                        // Clear only after successful send so dialog stays open on failure
+                        onPendingConfirmationChange(null)
+                        refreshKey++
+                    }
+                }) {
+                    Text("CONFIRM", color = Accent, fontFamily = Monospace, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        val pubKeyBytes = confirmation.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                        val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                        messagingManager?.sendLinkDenied(phoneUserId, confirmation.deviceId)
+                        // Clear only after successful send so dialog stays open on failure
+                        onPendingConfirmationChange(null)
+                    }
+                }) {
+                    Text("DENY", color = ErrorRed, fontFamily = Monospace)
+                }
+            },
+            containerColor = Surface,
+            titleContentColor = Accent
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
@@ -148,25 +258,64 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
                         }
                     )
                 } else {
-                    // Not linked yet — show pairing QR
-                    Text(
-                        "Scan this QR code from your Android phone to link it.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 300.dp)
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    QrFrame(bitmap = pairingQr, loading = pairingQrLoading, size = 280.dp)
-                    Spacer(Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier.widthIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        StepRow(1, "Open MeshCipher on Android")
-                        StepRow(2, "Settings → Linked Devices → +")
-                        StepRow(3, "Scan this QR code")
-                        StepRow(4, "Approve on your phone")
+                    // Not linked yet — show pairing QR or expired notice
+                    if (qrExpired) {
+                        // GAP-05 / R-06: QR expired — instruct user to regenerate
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.widthIn(max = 300.dp)
+                        ) {
+                            Text(
+                                "QR expired — click to regenerate.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(
+                                // Incrementing refreshKey restarts both LaunchedEffect(refreshKey)
+                                // blocks: the one that calls loadPairingQr() and the 60-second
+                                // countdown timer, so the new QR gets a fresh timer.
+                                onClick = { refreshKey++ },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Accent),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text("REGENERATE QR", style = MaterialTheme.typography.labelMedium, fontFamily = Monospace, letterSpacing = 1.sp)
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Scan this QR code from your Android phone to link it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 300.dp)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // Countdown timer
+                        if (!pairingQrLoading) {
+                            Text(
+                                "Expires in ${qrSecondsRemaining}s",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (qrSecondsRemaining <= 10) ErrorRed else TextTertiary,
+                                fontFamily = Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        QrFrame(bitmap = pairingQr, loading = pairingQrLoading, size = 280.dp)
+                    }
+                    if (!qrExpired) {
+                        Spacer(Modifier.height(16.dp))
+                        Column(
+                            modifier = Modifier.widthIn(max = 300.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            StepRow(1, "Open MeshCipher on Android")
+                            StepRow(2, "Settings → Linked Devices → +")
+                            StepRow(3, "Scan this QR code")
+                            StepRow(4, "Approve on your phone")
+                        }
                     }
                 }
             }

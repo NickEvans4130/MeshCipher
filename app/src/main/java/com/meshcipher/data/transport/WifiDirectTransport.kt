@@ -4,6 +4,7 @@ import android.content.Context
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.media.MediaEncryptor
 import com.meshcipher.data.media.MediaFileManager
+import com.meshcipher.data.transport.ContentTypes
 import com.meshcipher.data.wifidirect.WifiDirectManager
 import com.meshcipher.data.wifidirect.WifiDirectSocketManager
 import com.meshcipher.domain.model.MediaAttachment
@@ -292,7 +293,7 @@ class WifiDirectTransport @Inject constructor(
         }
 
         // Media messages use the chunked file transfer path
-        if (contentType == 1) {
+        if (contentType == ContentTypes.MEDIA) {
             val fileId = UUID.randomUUID().toString()
             return sendFile(
                 recipientUserId = recipientUserId,

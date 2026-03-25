@@ -34,8 +34,17 @@ class QRScannerViewModel @Inject constructor() : ViewModel() {
                 require(rawValue.startsWith(prefix)) { "Not a device link QR code" }
                 val encoded = rawValue.removePrefix(prefix)
                 val jsonBytes = Base64.getUrlDecoder().decode(encoded)
-                gson.fromJson(String(jsonBytes), DeviceLinkRequest::class.java)
+                val request = gson.fromJson(String(jsonBytes), DeviceLinkRequest::class.java)
                     ?: error("Failed to parse link request")
+
+                // GAP-05 / R-06: Reject QR codes whose timestamp falls outside the validity
+                // window. Explicit bounds comparisons avoid Long overflow that abs() subtraction
+                // is vulnerable to with attacker-supplied large timestamps.
+                val now = System.currentTimeMillis()
+                require(request.timestamp in (now - MAX_QR_AGE_MS)..(now + MAX_QR_FUTURE_SKEW_MS)) {
+                    "Link request expired. Please regenerate the QR code."
+                }
+                request
             }.fold(
                 onSuccess = { request -> _state.value = QRScanState.Scanned(request) },
                 onFailure = { e -> _state.value = QRScanState.Error(e.message ?: "Invalid QR code") }
@@ -44,4 +53,9 @@ class QRScannerViewModel @Inject constructor() : ViewModel() {
     }
 
     fun reset() { _state.value = QRScanState.Scanning }
+
+    companion object {
+        private const val MAX_QR_AGE_MS = 5 * 60 * 1000L       // 5 minutes back
+        private const val MAX_QR_FUTURE_SKEW_MS = 60 * 1000L   // 1 minute forward (clock skew)
+    }
 }

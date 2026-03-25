@@ -2,6 +2,9 @@ package com.meshcipher.domain.model
 
 import java.nio.ByteBuffer
 
+// GAP-02 / R-02: `path` field removed — hop-by-hop device IDs are not transmitted in the
+// wire format and are not stored on the model.  Loop prevention uses the `seenMessages` LRU
+// set in MeshRouter (keyed on message ID) rather than path inspection.
 data class MeshMessage(
     val id: String,
     val originDeviceId: String,
@@ -10,15 +13,9 @@ data class MeshMessage(
     val encryptedPayload: ByteArray,
     val timestamp: Long,
     val ttl: Int = MAX_TTL,
-    val hopCount: Int = 0,
-    val path: List<String> = emptyList()
+    val hopCount: Int = 0
 ) {
-    fun incrementHop(relayDeviceId: String): MeshMessage {
-        return copy(
-            hopCount = hopCount + 1,
-            path = path + relayDeviceId
-        )
-    }
+    fun incrementHop(): MeshMessage = copy(hopCount = hopCount + 1)
 
     fun shouldRelay(): Boolean = hopCount < ttl
 
@@ -27,18 +24,15 @@ data class MeshMessage(
         val originDeviceBytes = originDeviceId.toByteArray()
         val originUserBytes = originUserId.toByteArray()
         val destBytes = destinationUserId.toByteArray()
-        val pathStr = path.joinToString(",")
-        val pathBytes = pathStr.toByteArray()
 
         // Format: [idLen:2][id][originDeviceLen:2][originDevice][originUserLen:2][originUser]
-        //         [destLen:2][dest][timestamp:8][ttl:4][hopCount:4]
-        //         [pathLen:2][path][payloadLen:4][payload]
+        //         [destLen:2][dest][timestamp:8][ttl:4][hopCount:4][payloadLen:4][payload]
+        // GAP-02 / R-02: path field omitted from wire format.
         val totalSize = 2 + idBytes.size +
                 2 + originDeviceBytes.size +
                 2 + originUserBytes.size +
                 2 + destBytes.size +
                 8 + 4 + 4 +
-                2 + pathBytes.size +
                 4 + encryptedPayload.size
 
         val buffer = ByteBuffer.allocate(totalSize)
@@ -53,8 +47,6 @@ data class MeshMessage(
         buffer.putLong(timestamp)
         buffer.putInt(ttl)
         buffer.putInt(hopCount)
-        buffer.putShort(pathBytes.size.toShort())
-        buffer.put(pathBytes)
         buffer.putInt(encryptedPayload.size)
         buffer.put(encryptedPayload)
 
@@ -97,12 +89,6 @@ data class MeshMessage(
                 val ttl = buffer.int
                 val hopCount = buffer.int
 
-                val pathLen = buffer.short.toInt()
-                val pathBytes = ByteArray(pathLen)
-                buffer.get(pathBytes)
-                val pathStr = String(pathBytes)
-                val path = if (pathStr.isEmpty()) emptyList() else pathStr.split(",")
-
                 val payloadLen = buffer.int
                 val payload = ByteArray(payloadLen)
                 buffer.get(payload)
@@ -115,8 +101,7 @@ data class MeshMessage(
                     encryptedPayload = payload,
                     timestamp = timestamp,
                     ttl = ttl,
-                    hopCount = hopCount,
-                    path = path
+                    hopCount = hopCount
                 )
             } catch (e: Exception) {
                 null

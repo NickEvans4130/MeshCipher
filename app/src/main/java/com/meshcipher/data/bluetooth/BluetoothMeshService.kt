@@ -82,6 +82,11 @@ class BluetoothMeshService : Service() {
             maintenanceLoop()
         }
 
+        // GAP-01 / R-01: rotate BLE advertisement pseudonym on each epoch boundary.
+        serviceScope.launch {
+            epochRotationLoop()
+        }
+
         Timber.d("BluetoothMeshService created")
     }
 
@@ -142,10 +147,12 @@ class BluetoothMeshService : Service() {
         Timber.d("My userId: %s, message destinationUserId: %s",
             myIdentity.userId, message.destinationUserId)
 
-        // Update routing info from incoming message
-        if (message.path.isNotEmpty()) {
-            val fromDeviceId = message.path.last()
-            meshRouter.handleIncomingMessage(message, fromDeviceId)
+        // GAP-02 / R-02: path field removed. For direct (hopCount == 0) messages the
+        // immediate sender is the origin device; for relayed messages we cannot reliably
+        // determine the intermediate hop without path metadata, so routing is skipped here
+        // and relies on BLE discovery / existing routing table entries.
+        if (message.hopCount == 0) {
+            meshRouter.handleIncomingMessage(message, message.originDeviceId)
         }
 
         // Check if message is for us
@@ -210,11 +217,25 @@ class BluetoothMeshService : Service() {
         }
     }
 
+    private suspend fun epochRotationLoop() {
+        while (serviceScope.isActive) {
+            // Sleep until the next epoch boundary, then rotate
+            val now = System.currentTimeMillis()
+            val epochDuration = BleEpochKeyManager.EPOCH_DURATION_MS
+            val msUntilNextEpoch = epochDuration - (now % epochDuration)
+            delay(msUntilNextEpoch)
+            Timber.d("BLE epoch rotating — restarting advertisement with new pseudonym UUID")
+            bluetoothMeshManager.rotateIdentity()
+        }
+    }
+
     private suspend fun maintenanceLoop() {
         while (serviceScope.isActive) {
             delay(MAINTENANCE_INTERVAL_MS)
             bluetoothMeshManager.removeStalePeers()
             meshRouter.cleanupStaleRoutes()
+            // R-14: evict expired GATT rate-limiter entries.
+            gattServerManager.clearStaleRateLimitEntries()
         }
     }
 

@@ -44,6 +44,21 @@ android {
             "LEGACY_DB_PASSPHRASE",
             "\"${localProps.getProperty("legacy.db.passphrase", "meshcipher_secret_key")}\""
         )
+
+        // GAP-03 / R-04: Certificate pinning values. Override via local.properties for
+        // production builds. Placeholder values cause a startup crash (fail-fast).
+        buildConfigField(
+            "String", "RELAY_HOST",
+            "\"${localProps.getProperty("relay.host", "relay.meshcipher.net")}\""
+        )
+        buildConfigField(
+            "String", "RELAY_CERT_PIN_PRIMARY",
+            "\"${localProps.getProperty("relay.cert.pin.primary", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")}\""
+        )
+        buildConfigField(
+            "String", "RELAY_CERT_PIN_BACKUP",
+            "\"${localProps.getProperty("relay.cert.pin.backup", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")}\""
+        )
     }
 
     signingConfigs {

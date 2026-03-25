@@ -29,4 +29,13 @@ interface RelayApiService {
 
     @GET("api/v1/health")
     suspend fun healthCheck(): Response<HealthResponse>
+
+    /**
+     * Consume a one-time QR nonce (GAP-05 / R-06).
+     * Returns 200 on first use, 409 Conflict if already consumed.
+     */
+    @POST("api/v1/link/consume-nonce")
+    suspend fun consumeNonce(
+        @Body request: ConsumeNonceRequest
+    ): Response<ConsumeNonceResponse>
 }

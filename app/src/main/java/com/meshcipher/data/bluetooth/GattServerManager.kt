@@ -38,6 +38,9 @@ class GattServerManager @Inject constructor(
 
     private val connectedDevices = CopyOnWriteArraySet<BluetoothDevice>()
 
+    // R-14: per-peer rate limiter — 10 writes per 5 s; 5-minute block on violation.
+    private val rateLimiter = GattRateLimiter()
+
     @Volatile
     private var serviceAdded = false
 
@@ -84,6 +87,21 @@ class GattServerManager @Inject constructor(
 
             when (characteristic.uuid) {
                 BluetoothMeshManager.CHARACTERISTIC_MESSAGE_UUID -> {
+                    // R-14: drop writes that exceed the per-peer rate limit.
+                    if (!rateLimiter.allow(device.address)) {
+                        if (responseNeeded) {
+                            try {
+                                gattServer?.sendResponse(
+                                    device, requestId,
+                                    BluetoothGatt.GATT_FAILURE, offset, null
+                                )
+                            } catch (e: SecurityException) {
+                                Timber.w(e, "Missing permission to send GATT rate-limit response")
+                            }
+                        }
+                        return
+                    }
+
                     Timber.d("Received message write on MESSAGE characteristic from %s", device.address)
                     handleMessageReceived(device, value)
 
@@ -208,6 +226,9 @@ class GattServerManager @Inject constructor(
     }
 
     fun getConnectedDeviceCount(): Int = connectedDevices.size
+
+    /** Evicts expired rate-limiter entries to prevent unbounded memory growth. */
+    fun clearStaleRateLimitEntries() = rateLimiter.clearStale()
 
     private fun handleMessageReceived(device: BluetoothDevice, data: ByteArray) {
         val message = MeshMessage.fromBytes(data)

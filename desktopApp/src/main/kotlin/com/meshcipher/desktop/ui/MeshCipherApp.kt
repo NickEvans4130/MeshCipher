@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Refresh
@@ -42,15 +43,19 @@ import com.meshcipher.desktop.data.ContactRepository
 import com.meshcipher.desktop.data.DesktopContact
 import com.meshcipher.desktop.data.DesktopMessage
 import com.meshcipher.desktop.data.DeviceLinkManager
+import com.meshcipher.desktop.data.LinkConfirmationRequest
 import com.meshcipher.desktop.data.MessageRepository
 import com.meshcipher.desktop.data.MessagingManager
 import com.meshcipher.desktop.data.SettingsRepository
 import com.meshcipher.desktop.network.RelayState
 import com.meshcipher.desktop.network.RelayTransport
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import javax.swing.JFileChooser
+import javax.swing.SwingUtilities
 
 private enum class NavItem { CONVERSATIONS, LINK_DEVICE, SETTINGS }
 
@@ -61,10 +66,38 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null, relay: RelayTransp
             modifier = Modifier.fillMaxSize(),
             color = Background
         ) {
+            val scope = rememberCoroutineScope()
             var selectedNav by remember { mutableStateOf(NavItem.CONVERSATIONS) }
             var selectedContact by remember { mutableStateOf<DesktopContact?>(null) }
             var inChat by remember { mutableStateOf(false) }
             var contactsRefreshKey by remember { mutableStateOf(0) }
+
+            // GAP-06 / R-06: Pending link confirmation request lifted to app scope so the
+            // dialog is preserved if the user navigates away from the LINK_DEVICE screen.
+            var pendingConfirmation by remember { mutableStateOf<LinkConfirmationRequest?>(null) }
+
+            // Collect link confirmation requests at app level (survives nav changes)
+            LaunchedEffect(messagingManager) {
+                messagingManager?.linkConfirmationPending?.collect { req ->
+                    pendingConfirmation = req
+                }
+            }
+
+            // Auto-deny if the desktop user ignores the dialog for 2 minutes
+            val currentPending = pendingConfirmation
+            LaunchedEffect(currentPending) {
+                if (currentPending == null) return@LaunchedEffect
+                delay(2 * 60 * 1000L)
+                if (pendingConfirmation == currentPending) {
+                    pendingConfirmation = null
+                    scope.launch {
+                        val pubKeyBytes = currentPending.publicKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+                        val phoneUserId = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash).take(32)
+                        messagingManager?.sendLinkDenied(phoneUserId, currentPending.deviceId)
+                    }
+                }
+            }
 
             // When contacts are synced via relay, refresh the list
             LaunchedEffect(messagingManager) {
@@ -110,7 +143,9 @@ fun MeshCipherApp(messagingManager: MessagingManager? = null, relay: RelayTransp
                             selectedNav = NavItem.CONVERSATIONS
                             inChat = false
                         },
-                        messagingManager = messagingManager
+                        messagingManager = messagingManager,
+                        pendingConfirmation = pendingConfirmation,
+                        onPendingConfirmationChange = { pendingConfirmation = it }
                     )
 
                     selectedNav == NavItem.SETTINGS -> SettingsScreen(
@@ -442,6 +477,27 @@ private fun ChatPane(
         }
     }
 
+    fun pickAndSendFile() {
+        if (isSending || messagingManager == null) return
+        SwingUtilities.invokeLater {
+            val chooser = JFileChooser()
+            chooser.dialogTitle = "Send File"
+            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                val file = chooser.selectedFile
+                scope.launch {
+                    isSending = true
+                    try {
+                        messagingManager.sendFile(file, contact.contactId)
+                            .onSuccess { msg -> messages = messages + msg }
+                            .onFailure { messages = MessageRepository.getForContact(contact.contactId) }
+                    } finally {
+                        isSending = false
+                    }
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().background(Background)
     ) {
@@ -508,6 +564,18 @@ private fun ChatPane(
                 .padding(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+            IconButton(
+                onClick = { pickAndSendFile() },
+                enabled = !isSending && messagingManager != null,
+                modifier = Modifier.size(46.dp)
+            ) {
+                Icon(
+                    Icons.Default.AttachFile,
+                    contentDescription = "Attach file",
+                    tint = if (!isSending && messagingManager != null) TextSecondary else TextTertiary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },

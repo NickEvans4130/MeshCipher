@@ -16,6 +16,39 @@ from cryptography.hazmat.primitives import hashes, serialization
 import json
 import threading
 
+# ---------------------------------------------------------------------------
+# JWT Keypair (GAP-04 / R-05): ES256 asymmetric signing
+#
+# The private key is loaded from JWT_PRIVATE_KEY_PATH (env var). If the file
+# does not exist it is generated once and written there. The private key is
+# never logged, never returned to clients, and never hardcoded here.
+# Clients fetch the PEM public key from GET /api/v1/auth/public-key to verify
+# token signatures locally.
+# ---------------------------------------------------------------------------
+
+def _load_or_generate_jwt_keypair():
+    key_path = os.environ.get("JWT_PRIVATE_KEY_PATH", "")
+    if key_path and os.path.isfile(key_path):
+        with open(key_path, "rb") as f:
+            private_key = serialization.load_pem_private_key(f.read(), password=None)
+    else:
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        if key_path:
+            # Write with restrictive permissions before saving the key material
+            fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(
+                    private_key.private_bytes(
+                        encoding=serialization.Encoding.PEM,
+                        format=serialization.PrivateFormat.TraditionalOpenSSL,
+                        encryption_algorithm=serialization.NoEncryption(),
+                    )
+                )
+    return private_key, private_key.public_key()
+
+
+_jwt_private_key, _jwt_public_key = _load_or_generate_jwt_keypair()
+
 from flask import Flask, jsonify, request, g, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
@@ -57,8 +90,8 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", os.environ.get("ADMIN_KEY", ""
 # Challenge expiry
 CHALLENGE_EXPIRY_MINUTES = 5
 
-# JWT token expiry
-TOKEN_EXPIRY_DAYS = 30
+# JWT token expiry — reduced to 7 days (GAP-04 / R-05: limits exposure window)
+TOKEN_EXPIRY_DAYS = 7
 
 db = SQLAlchemy(app)
 
@@ -126,12 +159,38 @@ with app.app_context():
     db.create_all()
 
 # ---------------------------------------------------------------------------
+# One-time nonce store (GAP-05 / R-06)
+#
+# Consumed nonces are kept for QR_NONCE_TTL_SECONDS. After that they expire
+# and the key can be reused (but the QR's 5-min timestamp window closes first,
+# making replay impossible regardless). In production, replace with Redis or
+# a DB-backed store for multi-process deployments.
+# ---------------------------------------------------------------------------
+
+QR_NONCE_TTL_SECONDS = 600  # 10 minutes
+_consumed_nonces: dict = {}  # {nonce: consumed_at_utc_timestamp}
+_nonce_lock = threading.Lock()
+
+
+def _expire_old_nonces():
+    now = time.time()
+    with _nonce_lock:
+        expired = [k for k, v in _consumed_nonces.items() if now - v > QR_NONCE_TTL_SECONDS]
+        for k in expired:
+            del _consumed_nonces[k]
+
+# ---------------------------------------------------------------------------
 # Authentication Helpers
 # ---------------------------------------------------------------------------
 
 
 def require_auth(f):
-    """Decorator that requires a valid JWT token in the Authorization header."""
+    """Decorator that requires a valid JWT token in the Authorization header.
+
+    Tokens are verified with ES256 against the server's EC public key (GAP-04 / R-05).
+    HS256 is no longer accepted; forging a token requires the private key, which never
+    leaves the server.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
@@ -143,7 +202,7 @@ def require_auth(f):
 
         try:
             payload = pyjwt.decode(
-                token, app.config["SECRET_KEY"], algorithms=["HS256"]
+                token, _jwt_public_key, algorithms=["ES256"]
             )
             g.user_id = payload["user_id"]
         except pyjwt.ExpiredSignatureError:
@@ -331,14 +390,17 @@ def verify_challenge():
         del challenges[user_id]
         return jsonify({"error": "Invalid signature"}), 401
 
+    # GAP-04 / R-05: Sign with ES256 using the server EC private key.
+    # The private key never leaves the server; clients verify with the public key
+    # fetched from GET /api/v1/auth/public-key.
     token = pyjwt.encode(
         {
             "user_id": user_id,
             "iat": datetime.now(timezone.utc),
             "exp": datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRY_DAYS),
         },
-        app.config["SECRET_KEY"],
-        algorithm="HS256",
+        _jwt_private_key,
+        algorithm="ES256",
     )
 
     del challenges[user_id]
@@ -350,6 +412,58 @@ def verify_challenge():
         db.session.commit()
 
     return jsonify({"token": token, "expires_in": TOKEN_EXPIRY_DAYS * 24 * 3600})
+
+
+# ---------------------------------------------------------------------------
+# Public Key Endpoint (unauthenticated — clients need it before first auth)
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/v1/auth/public-key", methods=["GET"])
+@limiter.limit("30 per minute")
+def get_jwt_public_key():
+    """Return the PEM-encoded EC public key used to verify JWT signatures.
+
+    GAP-04 / R-05: Clients store this key on first successful authentication and use it
+    to verify all subsequent JWT signatures locally. This prevents a compromised relay
+    from issuing valid-looking tokens without the corresponding private key.
+    No authentication required — clients need it before they have a token.
+    """
+    pem = _jwt_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return jsonify({"public_key": pem.decode("utf-8")})
+
+
+# ---------------------------------------------------------------------------
+# Device-Linking: Nonce Consumption (GAP-05 / R-06)
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/v1/link/consume-nonce", methods=["POST"])
+@limiter.limit("20 per minute")
+@require_auth
+@validate_json("nonce", "device_id")
+def consume_link_nonce():
+    """Mark a QR enrolment nonce as consumed.
+
+    Returns 200 on first use; 409 Conflict if the nonce was already consumed.
+    Requires valid JWT authentication so unauthenticated callers cannot exhaust nonces.
+    GAP-05 / R-06: Prevents replay of a photographed QR code.
+    """
+    nonce = sanitize_string(g.json["nonce"], max_length=128)
+    if not nonce:
+        return jsonify({"error": "Invalid nonce"}), 400
+
+    _expire_old_nonces()
+
+    with _nonce_lock:
+        if nonce in _consumed_nonces:
+            return jsonify({"error": "Nonce already consumed"}), 409
+        _consumed_nonces[nonce] = time.time()
+
+    return jsonify({"status": "consumed"})
 
 
 # ---------------------------------------------------------------------------
@@ -393,11 +507,11 @@ def websocket_endpoint(ws):
             ws.send(json.dumps({"type": "error", "message": "Expected auth message"}))
             return
 
-        # Verify JWT token
+        # Verify JWT token with ES256 (GAP-04 / R-05)
         token = auth_msg["token"]
         try:
             payload = pyjwt.decode(
-                token, app.config["SECRET_KEY"], algorithms=["HS256"]
+                token, _jwt_public_key, algorithms=["ES256"]
             )
             user_id = payload["user_id"]
         except pyjwt.ExpiredSignatureError:
@@ -472,7 +586,11 @@ def relay_message():
         return jsonify({"error": "Recipient mailbox full"}), 429
 
     content_type = data.get("content_type", 0)
-    if content_type not in (0, 1):
+    # Content is always end-to-end encrypted; any non-negative integer type is accepted.
+    # Known types: 0=text, 1=media, 10=device_link, 11=contact_sync, 12=forwarded,
+    # 13=unlink, 14=media_forwarded, 15=desktop_msg, 16=desktop_send, 17=desktop_media,
+    # 18=link_confirm_request, 19=link_confirmed, 20=link_denied.
+    if not isinstance(content_type, int) or content_type < 0:
         return jsonify({"error": "Invalid content_type"}), 400
 
     message = QueuedMessage(

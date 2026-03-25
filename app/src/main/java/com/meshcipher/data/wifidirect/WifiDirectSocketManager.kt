@@ -15,9 +15,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.IOException
-import java.io.ObjectInputStream
-import java.io.ObjectOutputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -25,6 +25,17 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Manages TCP connections for WiFi Direct peer-to-peer messaging.
+ *
+ * GAP-07 / R-07: All serialisation uses [WifiDirectMessageCodec] (a typed binary
+ * protocol). Java ObjectInputStream/ObjectOutputStream are not used anywhere in this
+ * class; the RCE-via-deserialization gadget-chain attack surface is eliminated.
+ *
+ * A raw Java serialisation stream sent by a malicious peer (magic bytes 0xACED) will
+ * produce an unknown type byte (0xAC = 172), which [WifiDirectMessageCodec.decode] rejects
+ * with [IllegalArgumentException] without reading the rest of the stream.
+ */
 @Singleton
 class WifiDirectSocketManager @Inject constructor() {
 
@@ -34,7 +45,8 @@ class WifiDirectSocketManager @Inject constructor() {
     private var serverJob: Job? = null
 
     private val clientSockets = ConcurrentHashMap<String, Socket>()
-    private val clientOutputStreams = ConcurrentHashMap<String, ObjectOutputStream>()
+    // Buffered output streams keyed by peer address — access must be synchronised per entry.
+    private val clientOutputStreams = ConcurrentHashMap<String, BufferedOutputStream>()
 
     private val _receivedMessages = MutableSharedFlow<WifiDirectMessage>(replay = 0)
     val receivedMessages: SharedFlow<WifiDirectMessage> = _receivedMessages.asSharedFlow()
@@ -113,25 +125,27 @@ class WifiDirectSocketManager @Inject constructor() {
 
         scope.launch {
             try {
-                val outputStream = ObjectOutputStream(socket.getOutputStream())
+                val outputStream = BufferedOutputStream(socket.getOutputStream())
                 clientOutputStreams[clientAddress] = outputStream
 
-                val inputStream = ObjectInputStream(socket.getInputStream())
+                val inputStream = BufferedInputStream(socket.getInputStream())
 
                 while (isActive && !socket.isClosed) {
                     try {
-                        val message = inputStream.readObject() as? WifiDirectMessage
-                        message?.let {
-                            Timber.d("Received message: ${it::class.simpleName}")
-                            _receivedMessages.emit(it)
-                        }
+                        val message = WifiDirectMessageCodec.decode(inputStream)
+                        Timber.d("Received message: ${message::class.simpleName}")
+                        _receivedMessages.emit(message)
+                    } catch (e: IllegalArgumentException) {
+                        // GAP-07 / R-07: Unknown type byte or oversized payload — log and drop.
+                        // This covers Java-serialization-stream headers (0xACED) and any other
+                        // unrecognised framing.
+                        Timber.e(e, "Rejected malformed WiFi Direct message")
+                        break
                     } catch (e: IOException) {
                         if (isActive) {
                             Timber.d("Client disconnected")
                         }
                         break
-                    } catch (e: ClassNotFoundException) {
-                        Timber.e(e, "Unknown message class")
                     }
                 }
             } catch (e: IOException) {
@@ -157,28 +171,28 @@ class WifiDirectSocketManager @Inject constructor() {
             clientSockets[serverAddress] = socket
             _connectedClients.value = clientSockets.keys.toSet()
 
-            val outputStream = ObjectOutputStream(socket.getOutputStream())
+            val outputStream = BufferedOutputStream(socket.getOutputStream())
             clientOutputStreams[serverAddress] = outputStream
 
             // Start receiving messages from server
             scope.launch {
                 try {
-                    val inputStream = ObjectInputStream(socket.getInputStream())
+                    val inputStream = BufferedInputStream(socket.getInputStream())
 
                     while (isActive && !socket.isClosed) {
                         try {
-                            val message = inputStream.readObject() as? WifiDirectMessage
-                            message?.let {
-                                Timber.d("Received message from server: ${it::class.simpleName}")
-                                _receivedMessages.emit(it)
-                            }
+                            val message = WifiDirectMessageCodec.decode(inputStream)
+                            Timber.d("Received message from server: ${message::class.simpleName}")
+                            _receivedMessages.emit(message)
+                        } catch (e: IllegalArgumentException) {
+                            // GAP-07 / R-07: Reject unknown/oversized messages (see handleClient).
+                            Timber.e(e, "Rejected malformed message from WiFi Direct server")
+                            break
                         } catch (e: IOException) {
                             if (isActive) {
                                 Timber.d("Disconnected from server")
                             }
                             break
-                        } catch (e: ClassNotFoundException) {
-                            Timber.e(e, "Unknown message class")
                         }
                     }
                 } catch (e: IOException) {
@@ -226,7 +240,7 @@ class WifiDirectSocketManager @Inject constructor() {
 
         try {
             synchronized(outputStream) {
-                outputStream.writeObject(message)
+                WifiDirectMessageCodec.encode(message, outputStream)
                 outputStream.flush()
             }
             Timber.d("Sent message: ${message::class.simpleName}")

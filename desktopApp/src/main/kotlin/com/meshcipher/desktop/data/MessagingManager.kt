@@ -24,6 +24,19 @@ import java.util.Base64
  *   {"type":"new_message","message":{"sender_id":"...","encrypted_content":"<base64>","content_type":N}}
  * which is normalised by [RelayMessage.normalize()] before processing.
  */
+/**
+ * Payload of a link confirmation request sent by Android (content_type=18).
+ * GAP-06 / R-06: Carries enough context for the desktop to show a meaningful dialog.
+ */
+data class LinkConfirmationRequest(
+    val deviceId: String,
+    val deviceName: String,
+    val publicKeyFingerprint: String,
+    val publicKeyHex: String,
+    val timestamp: Long,
+    val nonce: String
+)
+
 class MessagingManager(
     private val localDeviceId: String,
     private val crypto: MessageCrypto,
@@ -38,6 +51,13 @@ class MessagingManager(
     /** Emits Unit whenever the contacts list changes (after a sync). */
     private val _contactsUpdated = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val contactsUpdated: SharedFlow<Unit> = _contactsUpdated.asSharedFlow()
+
+    /**
+     * GAP-06 / R-06: Emits a [LinkConfirmationRequest] when Android sends content_type=18.
+     * The desktop UI collects this to show a confirmation dialog.
+     */
+    private val _linkConfirmationPending = MutableSharedFlow<LinkConfirmationRequest>(extraBufferCapacity = 1)
+    val linkConfirmationPending: SharedFlow<LinkConfirmationRequest> = _linkConfirmationPending.asSharedFlow()
 
     init {
         scope.launch { listenForIncoming() }
@@ -120,6 +140,8 @@ class MessagingManager(
             CONTENT_TYPE_DEVICE_UNLINK -> handleRemoteUnlink()
             CONTENT_TYPE_MEDIA_FORWARDED -> handleMediaForwarded(payloadBytes)
             CONTENT_TYPE_DESKTOP_MSG -> handleDesktopMessage(msg.senderId, payloadBytes)
+            // GAP-06 / R-06: Android approved the link and is requesting desktop confirmation
+            CONTENT_TYPE_LINK_CONFIRM_REQUEST -> handleLinkConfirmationRequest(payloadBytes)
             else -> handleMessage(msg.senderId, payloadBytes, msg.rawPayload)
         }
     }
@@ -373,6 +395,61 @@ class MessagingManager(
         )
     }
 
+    /**
+     * GAP-06 / R-06: Android sent a link confirmation request (content_type=18).
+     * Parse the payload and expose it so the UI can show a confirmation dialog.
+     */
+    private fun handleLinkConfirmationRequest(bytes: ByteArray) {
+        runCatching {
+            val root = json.parseToJsonElement(String(bytes)).let {
+                it as? kotlinx.serialization.json.JsonObject
+            } ?: return
+            fun str(k: String) = root[k]?.let {
+                (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+            }.orEmpty()
+            val req = LinkConfirmationRequest(
+                deviceId = str("deviceId"),
+                deviceName = str("deviceName"),
+                publicKeyFingerprint = str("publicKeyFingerprint"),
+                publicKeyHex = str("publicKeyHex"),
+                timestamp = root["timestamp"]?.let {
+                    (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()
+                } ?: System.currentTimeMillis(),
+                nonce = str("nonce")
+            )
+            if (req.deviceId.isBlank()) return
+            _linkConfirmationPending.tryEmit(req)
+        }.onFailure { e -> System.err.println("MessagingManager: Failed to parse link confirmation request: $e") }
+    }
+
+    /**
+     * GAP-06 / R-06: Desktop user confirmed the link.
+     * Sends content_type=19 to Android so it can mark the device as fully approved.
+     * [phoneUserId] is the relay userId of the Android device.
+     * [pendingDeviceId] is included in the payload so Android can match the event.
+     */
+    suspend fun sendLinkConfirmed(phoneUserId: String, pendingDeviceId: String) {
+        val payload = """{"deviceId":"$pendingDeviceId","status":"confirmed"}""".toByteArray()
+        relay.sendRawMessage(
+            recipientId = phoneUserId,
+            payload = payload,
+            contentType = CONTENT_TYPE_LINK_CONFIRMED
+        )
+    }
+
+    /**
+     * GAP-06 / R-06: Desktop user denied the link.
+     * Sends content_type=20 to Android so it can remove the pending device.
+     */
+    suspend fun sendLinkDenied(phoneUserId: String, pendingDeviceId: String) {
+        val payload = """{"deviceId":"$pendingDeviceId","status":"denied"}""".toByteArray()
+        relay.sendRawMessage(
+            recipientId = phoneUserId,
+            payload = payload,
+            contentType = CONTENT_TYPE_LINK_DENIED
+        )
+    }
+
     /** Send a type-13 unlink notification to the given relay userId. */
     suspend fun sendUnlinkNotification(recipientUserId: String) {
         relay.sendRawMessage(
@@ -392,6 +469,51 @@ class MessagingManager(
             }
         }
     }
+
+    /**
+     * Send a file to a phone contact by routing through the linked phone (content_type=17).
+     * Capped at 10 MB.
+     */
+    suspend fun sendFile(file: java.io.File, recipientId: String): Result<DesktopMessage> =
+        withContext(Dispatchers.IO) {
+            val maxBytes = 10 * 1024 * 1024
+            if (file.length() > maxBytes) {
+                return@withContext Result.failure(IllegalArgumentException("File too large (max 10 MB)"))
+            }
+            val phone = DeviceLinkManager.getApprovedDevices().firstOrNull()
+                ?: return@withContext Result.failure(IllegalStateException("No linked phone"))
+
+            val fileBytes = file.readBytes()
+            val fileDataB64 = java.util.Base64.getEncoder().encodeToString(fileBytes)
+            val mimeType = runCatching {
+                java.nio.file.Files.probeContentType(file.toPath())
+            }.getOrNull() ?: "application/octet-stream"
+            val escapedName = file.name.replace("\\", "\\\\").replace("\"", "\\\"")
+            val escapedMime = mimeType.replace("\"", "\\\"")
+
+            val payload = """{"fileName":"$escapedName","mimeType":"$escapedMime","fileData":"$fileDataB64","recipientId":"$recipientId","senderId":"${phone.phoneUserId}"}""".toByteArray()
+
+            val msgId = generateUUID()
+            val localMsg = MessageRepository.save(
+                contactId = recipientId,
+                content = "[File: ${file.name}]",
+                isOutgoing = true,
+                status = "sending",
+                messageId = msgId
+            )
+
+            runCatching {
+                relay.sendRawMessage(
+                    recipientId = phone.phoneUserId,
+                    payload = payload,
+                    contentType = CONTENT_TYPE_DESKTOP_MEDIA_REQUEST
+                )
+                MessageRepository.updateStatus(msgId, "sent")
+                localMsg.copy(status = "sent")
+            }.also { result ->
+                if (result.isFailure) MessageRepository.updateStatus(msgId, "failed")
+            }
+        }
 
     fun dispose() = scope.cancel()
 }
