@@ -29,3 +29,9 @@ data class AuthVerifyResponse(
     @SerializedName("expires_in")
     val expiresIn: Long
 )
+
+/** GAP-04 / R-05: Response from GET /api/v1/auth/public-key */
+data class RelayPublicKeyResponse(
+    @SerializedName("public_key")
+    val publicKey: String
+)

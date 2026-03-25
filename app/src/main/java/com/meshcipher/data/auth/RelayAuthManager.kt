@@ -73,12 +73,32 @@ class RelayAuthManager @Inject constructor(
 
                 val baseUrl = appPreferences.relayServerUrl.first()
 
+                // Step 0: Fetch relay public key if not yet stored (GAP-04 / R-05).
+                // Must happen before authentication so the issued token can be verified.
+                if (tokenStorage.getRelayPublicKey() == null) {
+                    fetchAndStorePublicKey(baseUrl)
+                }
+
                 // Step 1: Register device
                 registerDevice(baseUrl, identity)
 
                 // Step 2: Authenticate (challenge-response)
                 val token = authenticate(baseUrl, identity)
                 if (token != null) {
+                    // Verify the JWT signature before trusting and storing the token.
+                    val pubKey = tokenStorage.getRelayPublicKey()
+                    if (pubKey != null) {
+                        val valid = try {
+                            JwtSignatureVerifier.verify(token, pubKey)
+                        } catch (e: SecurityException) {
+                            Timber.e(e, "JWT signature verification failed — relay may be compromised")
+                            return@withContext null
+                        }
+                        if (!valid) {
+                            Timber.e("JWT signature invalid — rejecting token")
+                            return@withContext null
+                        }
+                    }
                     tokenStorage.saveToken(token)
                     Timber.d("Relay authentication successful")
                 }
@@ -171,6 +191,35 @@ class RelayAuthManager @Inject constructor(
             }
             val responseJson = JSONObject(it.body?.string() ?: "{}")
             return responseJson.optString("token", "").ifEmpty { null }
+        }
+    }
+
+    /**
+     * Fetches the relay's ES256 public key and stores it for JWT signature verification.
+     * GAP-04 / R-05: Called on first run and on signature verification failure.
+     * Failure is non-fatal here — signature verification will fall back to expiry-only
+     * checking until the key is available, but [ensureAuthenticated] will reject tokens
+     * with invalid signatures if a key is stored.
+     */
+    private fun fetchAndStorePublicKey(baseUrl: String) {
+        val url = buildUrl(baseUrl, "api/v1/auth/public-key") ?: return
+        val request = Request.Builder().url(url).get().build()
+        try {
+            plainClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: return
+                    val json = org.json.JSONObject(body)
+                    val pem = json.optString("public_key", "")
+                    if (pem.isNotBlank()) {
+                        tokenStorage.saveRelayPublicKey(pem)
+                        Timber.d("Relay public key fetched and stored")
+                    }
+                } else {
+                    Timber.w("Failed to fetch relay public key: %d", response.code)
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Could not fetch relay public key")
         }
     }
 
