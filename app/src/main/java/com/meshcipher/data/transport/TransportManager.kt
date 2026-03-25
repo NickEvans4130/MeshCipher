@@ -34,7 +34,8 @@ class TransportManager @Inject constructor(
     private val wifiDirectTransport: WifiDirectTransport,
     private val p2pTransport: P2PTransport,
     private val dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
-    private val smartModeManager: SmartModeManager
+    private val smartModeManager: SmartModeManager,
+    private val relayHealthMonitor: RelayHealthMonitor
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -73,6 +74,7 @@ class TransportManager @Inject constructor(
                 Timber.d("Prefer TOR: %s", pref)
             }
         }
+        relayHealthMonitor.startMonitoring()
     }
 
     fun getActiveTransport(): InternetTransport {
@@ -199,6 +201,18 @@ class TransportManager @Inject constructor(
                 return wifiResult
             }
             Timber.d("$TAG: WiFi Direct failed, trying internet")
+        }
+
+        // RM-12 / R-13: Skip relay entirely if health monitor reports OFFLINE.
+        val relayOffline = relayHealthMonitor.healthState.value == RelayHealthMonitor.RelayHealthState.OFFLINE
+        if (relayOffline) {
+            Timber.d("$TAG: relay OFFLINE — skipping internet transport, prefer local fallback")
+            if (bluetoothMeshTransport.isAvailable()) {
+                val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+                if (btResult.isSuccess) smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
+                return btResult
+            }
+            return Result.failure(Exception("Relay unavailable and no local transport reachable"))
         }
 
         // Internet transport: in Smart Mode use TOR if preferTor is on; otherwise use

@@ -58,6 +58,11 @@ class OfflineQueueManager @Inject constructor(
 
     fun enqueue(recipientId: String, conversationId: String, messageId: String) {
         synchronized(queue) {
+            // RM-12 / R-13: Cap at 500 messages; drop oldest on overflow.
+            while (queue.size >= MAX_QUEUE_SIZE) {
+                val dropped = queue.removeAt(0)
+                Timber.w("OfflineQueue: queue full — dropped oldest message %s", dropped.messageId)
+            }
             queue.add(QueuedSend(recipientId, conversationId, messageId))
             _queueSize.value = queue.size
         }
@@ -83,4 +88,8 @@ class OfflineQueueManager @Inject constructor(
 
     fun pendingCountFor(recipientId: String): Int =
         synchronized(queue) { queue.count { it.recipientId == recipientId } }
+
+    companion object {
+        const val MAX_QUEUE_SIZE = 500
+    }
 }

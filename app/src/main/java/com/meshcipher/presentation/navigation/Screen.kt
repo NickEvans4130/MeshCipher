@@ -37,6 +37,7 @@ sealed class Screen(val route: String) {
     }
     object LinkedDevices : Screen("linked_devices")
     object ScanDeviceQr : Screen("scan_device_qr")
+    object BridgeSettings : Screen("bridge_settings")
     object DeviceLinkApproval : Screen("device_link_approval/{requestJson}") {
         fun createRoute(requestJson: String): String {
             val encoded = android.util.Base64.encodeToString(

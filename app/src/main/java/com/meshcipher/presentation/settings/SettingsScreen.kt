@@ -63,6 +63,7 @@ fun SettingsScreen(
     onP2PTorClick: () -> Unit = {},
     onGuideClick: () -> Unit = {},
     onLinkedDevicesClick: () -> Unit = {},
+    onBridgeSettingsClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -420,6 +421,28 @@ fun SettingsScreen(
                             )
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // GAP-09 / R-11: Bridge settings
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onBridgeSettingsClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = SecureGreen, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Configure Tor Bridges", style = MaterialTheme.typography.bodyMedium, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Set up obfs4 bridges for censored networks", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextSecondary)
                 }
             }
 

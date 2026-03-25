@@ -32,7 +32,8 @@ import javax.inject.Singleton
 @Singleton
 class EmbeddedTorManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val bridgeRepository: TorBridgeRepository
 ) {
 
     enum class State {
@@ -310,6 +311,7 @@ class EmbeddedTorManager @Inject constructor(
             }
 
             Timber.d("Tor fully bootstrapped, SOCKS port: %d", socksPort)
+            applyBridgesIfConfigured()
         } catch (e: Exception) {
             Timber.e(e, "Error monitoring bootstrap")
             _status.value = EmbeddedTorStatus(
@@ -386,6 +388,36 @@ class EmbeddedTorManager @Inject constructor(
                 state = State.ERROR,
                 errorMessage = "Hidden service error: ${e.message}"
             )
+        }
+    }
+
+    /**
+     * GAP-09 / R-11: Apply configured bridges via the Tor control port.
+     * Called after Tor is bootstrapped. UseBridges and Bridge directives
+     * can be set via SETCONF. ClientTransportPlugin requires a torrc restart —
+     * if obfs4proxy is not already configured, Tor logs a warning and we
+     * document this limitation.
+     *
+     * A full bridge restart path (write torrc fragment + restart) is tracked
+     * as a future improvement when the Guardian Project exposes an explicit API.
+     */
+    suspend fun applyBridgesIfConfigured() {
+        val conn = torControlConnection ?: return
+        val bridges = bridgeRepository.getBridges()
+        if (bridges.isEmpty()) {
+            Timber.d("No bridges configured — using vanilla Tor")
+            return
+        }
+
+        try {
+            conn.setConf("UseBridges", "1")
+            bridges.forEach { bridge ->
+                conn.setConf("Bridge", bridge.toBridgeLine())
+                Timber.d("Applied bridge: %s %s", bridge.type, bridge.address)
+            }
+            Timber.d("Applied %d bridge(s) via SETCONF", bridges.size)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to apply bridges via control port")
         }
     }
 
