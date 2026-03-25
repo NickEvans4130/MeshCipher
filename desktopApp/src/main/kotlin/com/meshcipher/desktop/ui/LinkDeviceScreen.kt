@@ -30,6 +30,7 @@ import com.meshcipher.desktop.data.CONTENT_TYPE_DEVICE_UNLINK
 import com.meshcipher.desktop.data.DeviceLinkManager
 import com.meshcipher.desktop.data.LinkedPhone
 import com.meshcipher.desktop.data.MessagingManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.image.BufferedImage
 import java.text.SimpleDateFormat
@@ -43,6 +44,9 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
     // Pairing QR (phone scans to link)
     var pairingQr by remember { mutableStateOf<ImageBitmap?>(null) }
     var pairingQrLoading by remember { mutableStateOf(true) }
+    // GAP-05 / R-06: QR expires after 60 seconds to limit the replay window.
+    var qrExpired by remember { mutableStateOf(false) }
+    var qrSecondsRemaining by remember { mutableStateOf(60) }
 
     // Contact QR (contacts scan to add this desktop)
     var contactQr by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -55,6 +59,8 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
     suspend fun loadPairingQr() {
         pairingQrLoading = true
         pairingQr = null
+        qrExpired = false
+        qrSecondsRemaining = 60
         runCatching { DeviceLinkManager.generateQrImage(320).toComposeImageBitmap() }
             .onSuccess { pairingQr = it }
         pairingQrLoading = false
@@ -82,6 +88,18 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
 
     LaunchedEffect(Unit) {
         DeviceLinkManager.deviceLinked.collect { refreshKey++ }
+    }
+
+    // GAP-05 / R-06: Countdown timer — auto-expire the pairing QR after 60 seconds.
+    // The desktop generates a new nonce on each refresh, so the expired QR is permanently invalid.
+    LaunchedEffect(refreshKey) {
+        if (linkedPhone != null) return@LaunchedEffect
+        for (remaining in 59 downTo 0) {
+            delay(1_000L)
+            qrSecondsRemaining = remaining
+        }
+        qrExpired = true
+        pairingQr = null
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
@@ -148,25 +166,61 @@ fun LinkDeviceScreen(onBack: () -> Unit = {}, messagingManager: MessagingManager
                         }
                     )
                 } else {
-                    // Not linked yet — show pairing QR
-                    Text(
-                        "Scan this QR code from your Android phone to link it.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 300.dp)
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    QrFrame(bitmap = pairingQr, loading = pairingQrLoading, size = 280.dp)
-                    Spacer(Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier.widthIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        StepRow(1, "Open MeshCipher on Android")
-                        StepRow(2, "Settings → Linked Devices → +")
-                        StepRow(3, "Scan this QR code")
-                        StepRow(4, "Approve on your phone")
+                    // Not linked yet — show pairing QR or expired notice
+                    if (qrExpired) {
+                        // GAP-05 / R-06: QR expired — instruct user to regenerate
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.widthIn(max = 300.dp)
+                        ) {
+                            Text(
+                                "QR expired — click to regenerate.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { scope.launch { loadPairingQr() } },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Accent),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text("REGENERATE QR", style = MaterialTheme.typography.labelMedium, fontFamily = Monospace, letterSpacing = 1.sp)
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Scan this QR code from your Android phone to link it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 300.dp)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // Countdown timer
+                        if (!pairingQrLoading) {
+                            Text(
+                                "Expires in ${qrSecondsRemaining}s",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (qrSecondsRemaining <= 10) ErrorRed else TextTertiary,
+                                fontFamily = Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        QrFrame(bitmap = pairingQr, loading = pairingQrLoading, size = 280.dp)
+                    }
+                    if (!qrExpired) {
+                        Spacer(Modifier.height(16.dp))
+                        Column(
+                            modifier = Modifier.widthIn(max = 300.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            StepRow(1, "Open MeshCipher on Android")
+                            StepRow(2, "Settings → Linked Devices → +")
+                            StepRow(3, "Scan this QR code")
+                            StepRow(4, "Approve on your phone")
+                        }
                     }
                 }
             }

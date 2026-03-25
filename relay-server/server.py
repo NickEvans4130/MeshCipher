@@ -159,6 +159,27 @@ with app.app_context():
     db.create_all()
 
 # ---------------------------------------------------------------------------
+# One-time nonce store (GAP-05 / R-06)
+#
+# Consumed nonces are kept for QR_NONCE_TTL_SECONDS. After that they expire
+# and the key can be reused (but the QR's 5-min timestamp window closes first,
+# making replay impossible regardless). In production, replace with Redis or
+# a DB-backed store for multi-process deployments.
+# ---------------------------------------------------------------------------
+
+QR_NONCE_TTL_SECONDS = 600  # 10 minutes
+_consumed_nonces: dict = {}  # {nonce: consumed_at_utc_timestamp}
+_nonce_lock = threading.Lock()
+
+
+def _expire_old_nonces():
+    now = time.time()
+    with _nonce_lock:
+        expired = [k for k, v in _consumed_nonces.items() if now - v > QR_NONCE_TTL_SECONDS]
+        for k in expired:
+            del _consumed_nonces[k]
+
+# ---------------------------------------------------------------------------
 # Authentication Helpers
 # ---------------------------------------------------------------------------
 
@@ -413,6 +434,36 @@ def get_jwt_public_key():
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     return jsonify({"public_key": pem.decode("utf-8")})
+
+
+# ---------------------------------------------------------------------------
+# Device-Linking: Nonce Consumption (GAP-05 / R-06)
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/v1/link/consume-nonce", methods=["POST"])
+@limiter.limit("20 per minute")
+@require_auth
+@validate_json("nonce", "device_id")
+def consume_link_nonce():
+    """Mark a QR enrolment nonce as consumed.
+
+    Returns 200 on first use; 409 Conflict if the nonce was already consumed.
+    Requires valid JWT authentication so unauthenticated callers cannot exhaust nonces.
+    GAP-05 / R-06: Prevents replay of a photographed QR code.
+    """
+    nonce = sanitize_string(g.json["nonce"], max_length=128)
+    if not nonce:
+        return jsonify({"error": "Invalid nonce"}), 400
+
+    _expire_old_nonces()
+
+    with _nonce_lock:
+        if nonce in _consumed_nonces:
+            return jsonify({"error": "Nonce already consumed"}), 409
+        _consumed_nonces[nonce] = time.time()
+
+    return jsonify({"status": "consumed"})
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.awt.image.BufferedImage
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Base64
 
 data class LinkedPhone(
@@ -45,6 +46,11 @@ object DeviceLinkManager {
 
     val localDeviceId: String get() = deviceId
 
+    // GAP-05 / R-06: Track the nonce for the current QR session so the confirmation
+    // handshake (RM-04) can tie the confirmation back to this specific enrolment.
+    @Volatile private var _currentNonce: String = ""
+    val currentNonce: String get() = _currentNonce
+
     fun getPublicKeyHex(): String {
         val pubKey = if (keyManager.hasHardwareKey()) {
             keyManager.getPublicKey()
@@ -54,13 +60,29 @@ object DeviceLinkManager {
         return pubKey.toHex()
     }
 
-    fun buildLinkRequest(): DeviceLinkRequest = DeviceLinkRequest(
-        deviceId = deviceId,
-        deviceName = resolveHostname(),
-        deviceType = DeviceType.DESKTOP,
-        publicKeyHex = getPublicKeyHex(),
-        timestamp = System.currentTimeMillis()
-    )
+    /**
+     * Generates a fresh QR session nonce (GAP-05 / R-06).
+     * Each call produces a new 32-byte cryptographically random value, invalidating
+     * any previously displayed QR code.
+     */
+    private fun generateNonce(): String {
+        val nonceBytes = ByteArray(32)
+        SecureRandom().nextBytes(nonceBytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes)
+    }
+
+    fun buildLinkRequest(): DeviceLinkRequest {
+        // Generate a fresh nonce for every new QR session (GAP-05 / R-06)
+        _currentNonce = generateNonce()
+        return DeviceLinkRequest(
+            deviceId = deviceId,
+            deviceName = resolveHostname(),
+            deviceType = DeviceType.DESKTOP,
+            publicKeyHex = getPublicKeyHex(),
+            timestamp = System.currentTimeMillis(),
+            nonce = _currentNonce
+        )
+    }
 
     /**
      * Generates a QR code image encoding the link request as:

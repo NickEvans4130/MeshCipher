@@ -6,6 +6,8 @@ import com.google.gson.Gson
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.data.local.database.ContactDao
 import com.meshcipher.data.repository.LinkedDevicesRepository
+import com.meshcipher.data.remote.api.RelayApiService
+import com.meshcipher.data.remote.dto.ConsumeNonceRequest
 import com.meshcipher.data.transport.InternetTransport
 import com.meshcipher.shared.domain.model.DeviceLinkRequest
 import com.meshcipher.shared.domain.model.DeviceLinkResponse
@@ -35,6 +37,7 @@ class DeviceLinkApprovalViewModel @Inject constructor(
     private val identityManager: IdentityManager,
     private val repository: LinkedDevicesRepository,
     private val internetTransport: InternetTransport,
+    private val relayApiService: RelayApiService,
     private val contactDao: ContactDao
 ) : ViewModel() {
 
@@ -47,6 +50,19 @@ class DeviceLinkApprovalViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = ApprovalState.Loading
             runCatching {
+                // GAP-05 / R-06: Consume the one-time nonce to prevent QR replay.
+                // The relay returns 409 if the nonce was already used.
+                if (request.nonce.isNotBlank()) {
+                    val nonceResult = relayApiService.consumeNonce(
+                        ConsumeNonceRequest(nonce = request.nonce, deviceId = request.deviceId)
+                    )
+                    if (!nonceResult.isSuccessful) {
+                        val code = nonceResult.code()
+                        if (code == 409) error("This QR code has already been used. Please regenerate it.")
+                        else error("Nonce validation failed (HTTP $code). Please try again.")
+                    }
+                }
+
                 val identity = identityManager.getIdentity()
                     ?: error("No local identity found")
 

@@ -26,7 +26,11 @@ data class DeviceLinkRequest(
     // instead of throwing NPE when the field is absent from the JSON payload.
     val deviceType: DeviceType? = DeviceType.DESKTOP,
     val publicKeyHex: String,
-    val timestamp: Long
+    val timestamp: Long,
+    // GAP-05 / R-06: One-time cryptographic nonce prevents QR replay attacks.
+    // Generated fresh for each QR session; consumed via POST /api/v1/link/consume-nonce.
+    // Default empty for backward compatibility with older clients.
+    val nonce: String = ""
 )
 
 /**

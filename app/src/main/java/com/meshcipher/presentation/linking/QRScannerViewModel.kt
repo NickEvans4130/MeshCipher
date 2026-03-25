@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Base64
 import javax.inject.Inject
+import kotlin.math.abs
 
 sealed class QRScanState {
     object Scanning : QRScanState()
@@ -34,8 +35,16 @@ class QRScannerViewModel @Inject constructor() : ViewModel() {
                 require(rawValue.startsWith(prefix)) { "Not a device link QR code" }
                 val encoded = rawValue.removePrefix(prefix)
                 val jsonBytes = Base64.getUrlDecoder().decode(encoded)
-                gson.fromJson(String(jsonBytes), DeviceLinkRequest::class.java)
+                val request = gson.fromJson(String(jsonBytes), DeviceLinkRequest::class.java)
                     ?: error("Failed to parse link request")
+
+                // GAP-05 / R-06: Reject QR codes whose timestamp falls outside a ±5 minute
+                // window. This prevents replay of photographed or intercepted QR codes.
+                val ageMs = abs(System.currentTimeMillis() - request.timestamp)
+                require(ageMs <= 5 * 60 * 1000L) {
+                    "Link request expired. Please regenerate the QR code."
+                }
+                request
             }.fold(
                 onSuccess = { request -> _state.value = QRScanState.Scanned(request) },
                 onFailure = { e -> _state.value = QRScanState.Error(e.message ?: "Invalid QR code") }
