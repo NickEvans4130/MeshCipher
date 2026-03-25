@@ -1171,8 +1171,8 @@ def upload_pre_key_bundle():
         pre_key_id = safe_int(data["pre_key_id"], "pre_key_id")
         spk_id = safe_int(data["signed_pre_key_id"], "signed_pre_key_id")
         kyber_id = safe_int(data["kyber_pre_key_id"], "kyber_pre_key_id") if pqxdh else None
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    except ValueError:
+        return jsonify({"error": "Invalid numeric field"}), 400
 
     existing = StoredPreKeyBundle.query.filter_by(user_id=user_id).first()
     if existing:
