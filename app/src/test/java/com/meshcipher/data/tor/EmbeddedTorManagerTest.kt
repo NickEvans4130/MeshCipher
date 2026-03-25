@@ -1,8 +1,12 @@
 package com.meshcipher.data.tor
 
 import android.content.Context
+import com.meshcipher.data.local.preferences.AppPreferences
+import com.meshcipher.data.tor.TorBridgeRepository
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -12,15 +16,21 @@ import java.net.Proxy
 class EmbeddedTorManagerTest {
 
     private lateinit var context: Context
+    private lateinit var appPreferences: AppPreferences
+    private lateinit var bridgeRepository: TorBridgeRepository
     private lateinit var embeddedTorManager: EmbeddedTorManager
 
     @Before
     fun setup() {
         context = mockk(relaxed = true)
+        appPreferences = mockk(relaxed = true)
+        bridgeRepository = mockk(relaxed = true)
         val filesDir = File(System.getProperty("java.io.tmpdir"), "tor_test")
         filesDir.mkdirs()
         every { context.filesDir } returns filesDir
-        embeddedTorManager = EmbeddedTorManager(context)
+        every { appPreferences.ephemeralOnionMode } returns flowOf(false)
+        every { bridgeRepository.bridges } returns MutableStateFlow(emptyList())
+        embeddedTorManager = EmbeddedTorManager(context, appPreferences, bridgeRepository)
     }
 
     @Test
