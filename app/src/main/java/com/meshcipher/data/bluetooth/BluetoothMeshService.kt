@@ -142,10 +142,12 @@ class BluetoothMeshService : Service() {
         Timber.d("My userId: %s, message destinationUserId: %s",
             myIdentity.userId, message.destinationUserId)
 
-        // Update routing info from incoming message
-        if (message.path.isNotEmpty()) {
-            val fromDeviceId = message.path.last()
-            meshRouter.handleIncomingMessage(message, fromDeviceId)
+        // GAP-02 / R-02: path field removed. For direct (hopCount == 0) messages the
+        // immediate sender is the origin device; for relayed messages we cannot reliably
+        // determine the intermediate hop without path metadata, so routing is skipped here
+        // and relies on BLE discovery / existing routing table entries.
+        if (message.hopCount == 0) {
+            meshRouter.handleIncomingMessage(message, message.originDeviceId)
         }
 
         // Check if message is for us

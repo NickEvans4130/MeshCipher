@@ -2,7 +2,6 @@ package com.meshcipher.data.bluetooth.routing
 
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.GattClientManager
-import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.domain.model.MeshMessage
 import com.meshcipher.domain.model.MeshPeer
 import kotlinx.coroutines.Dispatchers
@@ -15,8 +14,7 @@ import javax.inject.Singleton
 @Singleton
 class MeshRouter @Inject constructor(
     private val bluetoothMeshManager: BluetoothMeshManager,
-    private val gattClientManager: GattClientManager,
-    private val identityManager: IdentityManager
+    private val gattClientManager: GattClientManager
 ) {
     val routingTable = RoutingTable()
 
@@ -43,8 +41,6 @@ class MeshRouter @Inject constructor(
             return@withContext Result.failure(Exception("TTL expired"))
         }
 
-        val myDeviceId = getMyDeviceId()
-
         // Check if message is for a direct neighbor
         val route = routingTable.getRoute(message.destinationUserId)
 
@@ -53,7 +49,7 @@ class MeshRouter @Inject constructor(
             if (nextHop != null) {
                 Timber.d("Routing message %s via %s (%d hops)",
                     message.id, nextHop.deviceId, route.hopCount)
-                return@withContext sendToPeer(nextHop, message.incrementHop(myDeviceId))
+                return@withContext sendToPeer(nextHop, message.incrementHop())
             }
             Timber.w("Next hop %s not reachable, falling back to flood", route.nextHopDeviceId)
         }
@@ -74,16 +70,15 @@ class MeshRouter @Inject constructor(
         }
 
         Timber.d("Flooding message %s to %d neighbors", message.id, neighbors.size)
-        val forwarded = message.incrementHop(myDeviceId)
+        // GAP-02 / R-02: path field removed; loop prevention relies on seenMessages (message ID).
+        val forwarded = message.incrementHop()
         var lastFailure: Exception? = null
         var anySuccess = false
 
         for (neighbor in neighbors) {
-            // Don't send back to origin or nodes already in path
-            if (neighbor.deviceId == message.originDeviceId ||
-                forwarded.path.contains(neighbor.deviceId)
-            ) {
-                Timber.d("Skipping neighbor %s (origin or in path)", neighbor.bluetoothAddress)
+            // Don't send back to the origin device.
+            if (neighbor.deviceId == message.originDeviceId) {
+                Timber.d("Skipping neighbor %s (origin)", neighbor.bluetoothAddress)
                 continue
             }
 
@@ -104,11 +99,9 @@ class MeshRouter @Inject constructor(
     }
 
     fun handleIncomingMessage(message: MeshMessage, fromDeviceId: String) {
-        // Update routing table from incoming message
-        if (message.path.isNotEmpty()) {
-            val originUserId = message.originDeviceId
-            updateRoute(originUserId, fromDeviceId, message.hopCount)
-        }
+        // GAP-02 / R-02: path field removed. Update routing using the directly-observed
+        // sender (fromDeviceId comes from the GATT connection, not message metadata).
+        updateRoute(message.originDeviceId, fromDeviceId, message.hopCount)
     }
 
     fun canReach(userId: String): Boolean {
@@ -144,10 +137,6 @@ class MeshRouter @Inject constructor(
             Timber.e(e, "Failed to send message %s to peer %s", message.id, peer.deviceId)
             Result.failure(e)
         }
-    }
-
-    private suspend fun getMyDeviceId(): String {
-        return identityManager.getIdentity()?.deviceId ?: "unknown"
     }
 
     companion object {

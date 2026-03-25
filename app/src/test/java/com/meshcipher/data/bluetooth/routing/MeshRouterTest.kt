@@ -2,8 +2,6 @@ package com.meshcipher.data.bluetooth.routing
 
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.GattClientManager
-import com.meshcipher.data.identity.IdentityManager
-import com.meshcipher.domain.model.Identity
 import com.meshcipher.domain.model.MeshMessage
 import com.meshcipher.domain.model.MeshPeer
 import io.mockk.coEvery
@@ -20,7 +18,6 @@ class MeshRouterTest {
 
     private lateinit var bluetoothMeshManager: BluetoothMeshManager
     private lateinit var gattClientManager: GattClientManager
-    private lateinit var identityManager: IdentityManager
     private lateinit var meshRouter: MeshRouter
 
     private val peersFlow = MutableStateFlow<List<MeshPeer>>(emptyList())
@@ -29,19 +26,10 @@ class MeshRouterTest {
     fun setup() {
         bluetoothMeshManager = mockk()
         gattClientManager = mockk()
-        identityManager = mockk()
 
         every { bluetoothMeshManager.discoveredPeers } returns peersFlow
 
-        coEvery { identityManager.getIdentity() } returns Identity(
-            userId = "my-user",
-            hardwarePublicKey = ByteArray(32),
-            createdAt = System.currentTimeMillis(),
-            deviceId = "my-device",
-            deviceName = "Test Device"
-        )
-
-        meshRouter = MeshRouter(bluetoothMeshManager, gattClientManager, identityManager)
+        meshRouter = MeshRouter(bluetoothMeshManager, gattClientManager)
     }
 
     @Test
@@ -180,8 +168,7 @@ class MeshRouterTest {
             destinationUserId = "my-user",
             encryptedPayload = ByteArray(10),
             timestamp = System.currentTimeMillis(),
-            hopCount = 2,
-            path = listOf("remote-device", "relay-device")
+            hopCount = 2
         )
 
         meshRouter.handleIncomingMessage(message, "relay-device")

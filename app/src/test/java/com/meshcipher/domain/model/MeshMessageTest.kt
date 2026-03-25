@@ -8,17 +8,9 @@ class MeshMessageTest {
     @Test
     fun `incrementHop increases hop count`() {
         val message = createMessage(hopCount = 0)
-        val incremented = message.incrementHop("relay-1")
+        val incremented = message.incrementHop()
 
         assertEquals(1, incremented.hopCount)
-    }
-
-    @Test
-    fun `incrementHop adds relay to path`() {
-        val message = createMessage(path = listOf("origin"))
-        val incremented = message.incrementHop("relay-1")
-
-        assertEquals(listOf("origin", "relay-1"), incremented.path)
     }
 
     @Test
@@ -49,8 +41,7 @@ class MeshMessageTest {
             encryptedPayload = "hello world".toByteArray(),
             timestamp = 1700000000000L,
             ttl = 4,
-            hopCount = 2,
-            path = listOf("device-1", "device-2")
+            hopCount = 2
         )
 
         val bytes = original.toBytes()
@@ -65,18 +56,6 @@ class MeshMessageTest {
         assertEquals(original.timestamp, restored.timestamp)
         assertEquals(original.ttl, restored.ttl)
         assertEquals(original.hopCount, restored.hopCount)
-        assertEquals(original.path, restored.path)
-    }
-
-    @Test
-    fun `toBytes and fromBytes with empty path`() {
-        val original = createMessage(path = emptyList())
-
-        val bytes = original.toBytes()
-        val restored = MeshMessage.fromBytes(bytes)
-
-        assertNotNull(restored)
-        assertTrue(restored!!.path.isEmpty())
     }
 
     @Test
@@ -117,8 +96,7 @@ class MeshMessageTest {
     private fun createMessage(
         id: String = "test-msg",
         hopCount: Int = 0,
-        ttl: Int = 5,
-        path: List<String> = emptyList()
+        ttl: Int = 5
     ) = MeshMessage(
         id = id,
         originDeviceId = "origin-device",
@@ -127,7 +105,6 @@ class MeshMessageTest {
         encryptedPayload = "test-data".toByteArray(),
         timestamp = System.currentTimeMillis(),
         ttl = ttl,
-        hopCount = hopCount,
-        path = path
+        hopCount = hopCount
     )
 }
