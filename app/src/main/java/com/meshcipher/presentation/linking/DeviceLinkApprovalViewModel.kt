@@ -98,9 +98,9 @@ class DeviceLinkApprovalViewModel @Inject constructor(
                 // so the desktop can show a meaningful confirmation dialog and tie the event
                 // to this specific enrolment session.
                 val confirmationPayload = gson.toJson(
-                    mapOf(
+                    mapOf<String, Any>(
                         "deviceId" to identity.deviceId,
-                        "deviceName" to identity.displayName,
+                        "deviceName" to identity.deviceName,
                         "publicKeyFingerprint" to phonePublicKeyHex.take(16),
                         "publicKeyHex" to phonePublicKeyHex,
                         "timestamp" to System.currentTimeMillis(),

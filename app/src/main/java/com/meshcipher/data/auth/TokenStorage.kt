@@ -33,17 +33,6 @@ class TokenStorage @Inject constructor(
         return prefs.getString(KEY_TOKEN, null)
     }
 
-    fun hasValidToken(): Boolean {
-        val token = getToken() ?: return false
-
-        return try {
-            val jwt = JWT(token)
-            !jwt.isExpired(10)
-        } catch (e: Exception) {
-            false
-        }
-    }
-
     fun clearToken() {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
