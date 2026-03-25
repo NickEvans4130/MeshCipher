@@ -104,9 +104,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.5")
 
     // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // SQLCipher for encryption
     implementation("net.zetetic:android-database-sqlcipher:4.5.4")
