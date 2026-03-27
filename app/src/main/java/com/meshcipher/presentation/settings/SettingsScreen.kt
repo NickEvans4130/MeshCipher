@@ -49,6 +49,7 @@ import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.MessageExpiryMode
+import com.meshcipher.domain.model.PrivacyProfile
 import com.meshcipher.presentation.theme.*
 import kotlinx.coroutines.delay
 
@@ -74,6 +75,8 @@ fun SettingsScreen(
     val relayServerUrl by viewModel.relayServerUrl.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
     val preferTor by viewModel.preferTor.collectAsState()
+    // MD-01: privacy profile selection state.
+    val privacyProfile by viewModel.privacyProfile.collectAsState()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var showCopiedMessage by remember { mutableStateOf(false) }
@@ -993,6 +996,75 @@ fun SettingsScreen(
                         contentDescription = null,
                         tint = TextSecondary
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // MD-01: Privacy Profile selection.
+            Text(
+                text = "PRIVACY PROFILE",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                color = SecureGreen
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    listOf(
+                        Triple(
+                            PrivacyProfile.STANDARD,
+                            "Standard",
+                            "Default privacy settings"
+                        ),
+                        Triple(
+                            PrivacyProfile.HIGH_PRIVACY,
+                            "High Privacy",
+                            "Enables message padding, BLE interval randomisation, and routing header encryption. Recommended for sensitive use."
+                        ),
+                        Triple(
+                            PrivacyProfile.MAXIMUM,
+                            "Maximum",
+                            "Reserved for future advanced protections. Currently equivalent to High Privacy."
+                        )
+                    ).forEachIndexed { index, (profile, label, description) ->
+                        if (index > 0) {
+                            Divider(color = DividerSubtle)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setPrivacyProfile(profile) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = privacyProfile == profile,
+                                onClick = { viewModel.setPrivacyProfile(profile) },
+                                colors = RadioButtonDefaults.colors(selectedColor = SecureGreen)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

@@ -37,6 +37,8 @@ class AppPreferences @Inject constructor(
         val RELAY_SERVER_URL = stringPreferencesKey("relay_server_url")
         val SMART_MODE_ENABLED = booleanPreferencesKey("smart_mode_enabled")
         val PREFER_TOR = booleanPreferencesKey("prefer_tor")
+        // MD-01: persisted privacy profile selection.
+        val PRIVACY_PROFILE = stringPreferencesKey("privacy_profile")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -156,6 +158,17 @@ class AppPreferences @Inject constructor(
     suspend fun setPreferTor(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.PREFER_TOR] = enabled
+        }
+    }
+
+    // MD-01: privacy profile preference.
+    val privacyProfile: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PRIVACY_PROFILE] ?: "STANDARD"
+    }
+
+    suspend fun setPrivacyProfile(profile: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PRIVACY_PROFILE] = profile
         }
     }
 }
