@@ -15,11 +15,13 @@ import android.content.Context
 import android.os.ParcelUuid
 import com.meshcipher.data.identity.IdentityManager
 import com.meshcipher.domain.model.MeshPeer
+import com.meshcipher.domain.repository.PrivacyProfileRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
+import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -30,7 +32,9 @@ class BluetoothMeshManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val identityManager: IdentityManager,
     // GAP-01 / R-01: epoch-rotating advertisement pseudonyms
-    private val identityProvider: BleAdvertisementIdentityProvider
+    private val identityProvider: BleAdvertisementIdentityProvider,
+    // MD-03: privacy profile for advertising interval randomisation
+    private val privacyProfileRepository: PrivacyProfileRepository
 ) {
     private val bluetoothManager: BluetoothManager? =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -40,6 +44,9 @@ class BluetoothMeshManager @Inject constructor(
     private var scanner: BluetoothLeScanner? = null
     private var advertiseCallback: AdvertiseCallback? = null
     private var scanCallback: ScanCallback? = null
+
+    // MD-03: SecureRandom instance for interval randomisation.
+    private val secureRandom = SecureRandom()
 
     private val peerMap = ConcurrentHashMap<String, MeshPeer>()
 
@@ -64,7 +71,7 @@ class BluetoothMeshManager @Inject constructor(
             ?: return Result.failure(Exception("BLE advertising not supported"))
 
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setAdvertiseMode(getAdvertisingMode())
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
             .setTimeout(0)
@@ -238,9 +245,47 @@ class BluetoothMeshManager @Inject constructor(
         _discoveredPeers.value = peerMap.values.toList()
     }
 
+    /**
+     * MD-03: Returns whether the current privacy profile activates advertising interval
+     * randomisation. Reads from the repository synchronously via the Flow's first emission.
+     * Called only from advertising setup paths (not hot loops).
+     */
+    suspend fun isPrivacyProfileEnhanced(): Boolean =
+        privacyProfileRepository.getPrivacyProfile().isEnhanced()
+
+    /**
+     * MD-03: Returns an [AdvertiseSettings] advertise mode constant.
+     *
+     * In STANDARD profile: always LOW_LATENCY (the pre-sprint fixed behaviour).
+     * In HIGH_PRIVACY / MAXIMUM: randomly selects one of the three spec-defined BLE
+     * advertise modes, which correspond to approximate intervals of:
+     *   LOW_LATENCY  ≈ 100 ms
+     *   BALANCED     ≈ 250 ms
+     *   LOW_POWER    ≈ 1000 ms
+     *
+     * Android's BLE advertising API does not accept arbitrary intervals; the three preset
+     * modes are the finest granularity available.  SecureRandom is used per the spec.
+     *
+     * Note: DEBUG log only — do not log at INFO/WARN in production builds.
+     */
+    suspend fun getAdvertisingMode(): Int {
+        if (!isPrivacyProfileEnhanced()) {
+            return AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
+        }
+        val mode = when (secureRandom.nextInt(3)) {
+            0 -> AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY   // ≈ 100 ms
+            1 -> AdvertiseSettings.ADVERTISE_MODE_BALANCED      // ≈ 250 ms
+            else -> AdvertiseSettings.ADVERTISE_MODE_LOW_POWER  // ≈ 1000 ms
+        }
+        Timber.d("MD-03: randomised BLE advertise mode=%d", mode)
+        return mode
+    }
+
     companion object {
         val SERVICE_UUID: UUID = UUID.fromString("00001234-0000-1000-8000-00805F9B34FB")
         val CHARACTERISTIC_MESSAGE_UUID: UUID = UUID.fromString("00001235-0000-1000-8000-00805F9B34FB")
         val CHARACTERISTIC_ACK_UUID: UUID = UUID.fromString("00001236-0000-1000-8000-00805F9B34FB")
+        // MD-03: interval between advertising restarts when privacy profile is enhanced.
+        const val INTERVAL_RANDOMISATION_PERIOD_MS = 60_000L
     }
 }

@@ -58,6 +58,9 @@ class BluetoothMeshService : Service() {
     @Inject
     lateinit var contactRepository: ContactRepository
 
+    @Inject
+    lateinit var privacyProfileRepository: com.meshcipher.domain.repository.PrivacyProfileRepository
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -86,6 +89,22 @@ class BluetoothMeshService : Service() {
         // GAP-01 / R-01: rotate BLE advertisement pseudonym on each epoch boundary.
         serviceScope.launch {
             epochRotationLoop()
+        }
+
+        // MD-03: re-randomise the advertising interval every 60 s when privacy profile is enhanced.
+        serviceScope.launch {
+            intervalRandomisationLoop()
+        }
+
+        // MD-03: restart advertising immediately when the privacy profile changes at runtime.
+        serviceScope.launch {
+            privacyProfileRepository.privacyProfile.collect {
+                if (bluetoothMeshManager.isAdvertising.value) {
+                    Timber.d("MD-03: privacy profile changed, restarting advertising")
+                    bluetoothMeshManager.stopAdvertising()
+                    bluetoothMeshManager.startAdvertising()
+                }
+            }
         }
 
         Timber.d("BluetoothMeshService created")
@@ -216,6 +235,24 @@ class BluetoothMeshService : Service() {
                 senderContact.displayName, conversationId)
         } catch (e: Exception) {
             Timber.e(e, "Failed to deliver mesh message locally")
+        }
+    }
+
+    /**
+     * MD-03: Every 60 seconds, restart BLE advertising with a freshly randomised interval
+     * tier so passive scanners cannot fingerprint activity windows.  Only active when
+     * PrivacyProfile is HIGH_PRIVACY or MAXIMUM.  GATT connections are not interrupted —
+     * stopAdvertising() only halts new-connection advertisements; existing GATT connections
+     * live on the GATT server layer independently.
+     */
+    private suspend fun intervalRandomisationLoop() {
+        while (serviceScope.isActive) {
+            delay(BluetoothMeshManager.INTERVAL_RANDOMISATION_PERIOD_MS)
+            if (bluetoothMeshManager.isPrivacyProfileEnhanced() && bluetoothMeshManager.isAdvertising.value) {
+                Timber.d("MD-03: restarting advertising with new randomised interval")
+                bluetoothMeshManager.stopAdvertising()
+                bluetoothMeshManager.startAdvertising()
+            }
         }
     }
 
