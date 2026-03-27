@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.meshcipher.util.MessagePadding
 import timber.log.Timber
 import java.util.UUID
 import javax.inject.Inject
@@ -175,8 +176,9 @@ class BluetoothMeshService : Service() {
 
     private suspend fun deliverMessageLocally(meshMessage: MeshMessage) {
         try {
-            // Decode the message content
-            val content = String(meshMessage.encryptedPayload)
+            // Decode the message content.
+            // MD-02: unpad gracefully — sender may have padded regardless of our profile.
+            val content = String(MessagePadding.unpad(meshMessage.encryptedPayload))
 
             // Find the sender contact by their user ID
             val contacts = contactRepository.getAllContacts().first()

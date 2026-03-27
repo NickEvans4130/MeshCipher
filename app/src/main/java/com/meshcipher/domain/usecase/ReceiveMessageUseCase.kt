@@ -9,6 +9,7 @@ import com.meshcipher.data.remote.dto.QueuedMessage
 import com.meshcipher.data.service.MessageForwardingService
 import com.meshcipher.data.transport.ContentTypes
 import com.meshcipher.data.transport.TransportManager
+import com.meshcipher.util.MessagePadding
 import com.meshcipher.domain.model.MediaAttachment
 import com.meshcipher.domain.model.MediaMessageEnvelope
 import com.meshcipher.domain.model.MediaType
@@ -133,8 +134,9 @@ class ReceiveMessageUseCase @Inject constructor(
     }
 
     private suspend fun processTextMessage(queued: QueuedMessage) {
-        // Decode content - currently plaintext base64, will be encrypted in later phase
-        val contentBytes = Base64.decode(queued.encryptedContent, Base64.NO_WRAP)
+        // Decode content - currently plaintext base64, will be encrypted in later phase.
+        // MD-02: unpad gracefully — sender may have applied padding regardless of receiver profile.
+        val contentBytes = MessagePadding.unpad(Base64.decode(queued.encryptedContent, Base64.NO_WRAP))
         val content = String(contentBytes)
 
         // Find the contact by their signal protocol address name
@@ -172,7 +174,8 @@ class ReceiveMessageUseCase @Inject constructor(
     }
 
     private suspend fun processMediaMessage(queued: QueuedMessage) {
-        val contentBytes = Base64.decode(queued.encryptedContent, Base64.NO_WRAP)
+        // MD-02: unpad gracefully before JSON parsing.
+        val contentBytes = MessagePadding.unpad(Base64.decode(queued.encryptedContent, Base64.NO_WRAP))
         val envelopeJson = String(contentBytes)
         val envelope = MediaMessageEnvelope.fromJson(envelopeJson)
 
