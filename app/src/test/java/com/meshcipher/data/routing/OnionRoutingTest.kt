@@ -92,7 +92,8 @@ class OnionRoutingTest {
         assertNotNull("hop1 peeled layer should have inner onion", peeled1.innerOnion)
 
         // Peel hop2's layer.
-        val peeled2 = OnionPeeler.peelLayer(peeled1.innerOnion!!, keys["hop2"]!!.privateKey.serialize())
+        val innerOnion1 = peeled1.innerOnion!!
+        val peeled2 = OnionPeeler.peelLayer(innerOnion1, keys["hop2"]!!.privateKey.serialize())
         assertFalse("hop2 layer should not be terminal", peeled2.isTerminal)
         assertNotNull("hop2 peeled layer should have inner onion", peeled2.innerOnion)
 
@@ -149,10 +150,12 @@ class OnionRoutingTest {
         assertEquals(OnionRoutingHeader.ONION_LAYER_SIZE, onion.encryptedLayer.size)
 
         val peeled1 = OnionPeeler.peelLayer(onion, keys["hop1"]!!.privateKey.serialize())
-        assertEquals(OnionRoutingHeader.ONION_LAYER_SIZE, peeled1.innerOnion!!.encryptedLayer.size)
+        val innerOnion1 = peeled1.innerOnion!!
+        assertEquals(OnionRoutingHeader.ONION_LAYER_SIZE, innerOnion1.encryptedLayer.size)
 
-        val peeled2 = OnionPeeler.peelLayer(peeled1.innerOnion, keys["hop2"]!!.privateKey.serialize())
-        assertEquals(OnionRoutingHeader.ONION_LAYER_SIZE, peeled2.innerOnion!!.encryptedLayer.size)
+        val peeled2 = OnionPeeler.peelLayer(innerOnion1, keys["hop2"]!!.privateKey.serialize())
+        val innerOnion2 = peeled2.innerOnion!!
+        assertEquals(OnionRoutingHeader.ONION_LAYER_SIZE, innerOnion2.encryptedLayer.size)
     }
 
     @Test

@@ -56,7 +56,8 @@ class TransportManagerTest {
             wifiDirectTransport = wifiDirectTransport,
             p2pTransport = p2pTransport,
             dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
-            smartModeManager = smartModeManager
+            smartModeManager = smartModeManager,
+            privacyProfileRepository = mockk(relaxed = true)
         )
     }
 
