@@ -177,7 +177,7 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("app.cash.turbine:turbine:1.0.0")
+    testImplementation("app.cash.turbine:turbine:1.2.1")
     testImplementation("io.mockk:mockk:1.13.8")
 
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
