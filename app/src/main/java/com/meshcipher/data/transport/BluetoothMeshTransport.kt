@@ -56,25 +56,33 @@ class BluetoothMeshTransport @Inject constructor(
         var routingMode = RoutingMode.PLAINTEXT
         var onionHeader: OnionRoutingHeader? = null
         if (profile.isEnhanced()) {
-            val route = meshRouter.routingTable.getRoute(recipientUserId)
-            if (route != null) {
-                val routePeers = bluetoothMeshManager.discoveredPeers.value
-                    .filter { it.deviceId == route.nextHopDeviceId }
-                val destPeers = bluetoothMeshManager.discoveredPeers.value
-                    .filter { it.userId == recipientUserId }
-                val destPeer = destPeers.firstOrNull()
-                if (routePeers.isNotEmpty() && destPeer != null) {
-                    val built = OnionBuilder.buildOnion(routePeers, destPeer, signalProtocolStore)
-                    if (built != null) {
-                        routingMode = RoutingMode.ONION
-                        onionHeader = built
-                        Timber.d("MD-04: built onion for %s via %d hops", recipientUserId, routePeers.size)
-                    } else {
-                        Timber.d("MD-04: onion build failed, falling back to PLAINTEXT routing")
-                    }
-                } else {
-                    Timber.d("MD-04: insufficient route data for onion, falling back to PLAINTEXT")
+            val allPeers = bluetoothMeshManager.discoveredPeers.value
+            val peerByDeviceId = allPeers.associateBy { it.deviceId }
+            val destPeer = allPeers.firstOrNull { it.userId == recipientUserId }
+            if (destPeer != null) {
+                // Walk the routing table to build the full ordered relay list:
+                // start from recipientUserId and follow successive nextHopDeviceId entries
+                // back toward ourselves, building the path in sender-first order.
+                val relayPeers = mutableListOf<com.meshcipher.domain.model.MeshPeer>()
+                val visitedUserIds = mutableSetOf(recipientUserId)
+                var currentUserId = recipientUserId
+                repeat(OnionBuilder.ONION_MAX_HOPS) {
+                    val hop = meshRouter.routingTable.getRoute(currentUserId) ?: return@repeat
+                    val hopPeer = peerByDeviceId[hop.nextHopDeviceId] ?: return@repeat
+                    if (!visitedUserIds.add(hopPeer.userId)) return@repeat  // loop guard
+                    relayPeers.add(0, hopPeer)  // prepend → sender-first order
+                    currentUserId = hopPeer.userId
                 }
+                val built = OnionBuilder.buildOnion(relayPeers, destPeer, signalProtocolStore)
+                if (built != null) {
+                    routingMode = RoutingMode.ONION
+                    onionHeader = built
+                    Timber.d("MD-04: built onion for %s via %d relay(s)", recipientUserId, relayPeers.size)
+                } else {
+                    Timber.d("MD-04: onion build failed, falling back to PLAINTEXT routing")
+                }
+            } else {
+                Timber.d("MD-04: destination peer not discovered, falling back to PLAINTEXT")
             }
         }
 

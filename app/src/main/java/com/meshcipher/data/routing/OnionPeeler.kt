@@ -78,13 +78,16 @@ object OnionPeeler {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private fun deserialiseCellPlaintext(data: ByteArray): Pair<Boolean, String> {
-        if (data.isEmpty()) throw IllegalArgumentException("Empty onion cell plaintext")
+        if (data.size < 3) throw IllegalArgumentException("Onion cell plaintext too short: ${data.size} bytes")
         var pos = 0
 
         val isTerminal = data[pos++] == 1.toByte()
 
         val idLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
         pos += 2
+        if (data.size < pos + idLen) throw IllegalArgumentException(
+            "Onion cell plaintext truncated: need ${pos + idLen} bytes, have ${data.size}"
+        )
         val nextHopDeviceId = String(data, pos, idLen, Charsets.UTF_8)
 
         return isTerminal to nextHopDeviceId

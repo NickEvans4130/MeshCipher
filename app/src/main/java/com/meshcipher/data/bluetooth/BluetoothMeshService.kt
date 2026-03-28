@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.meshcipher.util.MessagePadding
 import timber.log.Timber
 import java.util.UUID
@@ -36,6 +38,10 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class BluetoothMeshService : Service() {
+
+    // MD-03: serialises all stop/start advertising calls to prevent races
+    // between intervalRandomisationLoop() and the privacy-profile change observer.
+    private val advertisingMutex = Mutex()
 
     @Inject
     lateinit var bluetoothMeshManager: BluetoothMeshManager
@@ -104,8 +110,7 @@ class BluetoothMeshService : Service() {
             privacyProfileRepository.privacyProfile.collect {
                 if (bluetoothMeshManager.isAdvertising.value) {
                     Timber.d("MD-03: privacy profile changed, restarting advertising")
-                    bluetoothMeshManager.stopAdvertising()
-                    bluetoothMeshManager.startAdvertising()
+                    restartAdvertising()
                 }
             }
         }
@@ -302,9 +307,16 @@ class BluetoothMeshService : Service() {
             delay(BluetoothMeshManager.INTERVAL_RANDOMISATION_PERIOD_MS)
             if (bluetoothMeshManager.isPrivacyProfileEnhanced() && bluetoothMeshManager.isAdvertising.value) {
                 Timber.d("MD-03: restarting advertising with new randomised interval")
-                bluetoothMeshManager.stopAdvertising()
-                bluetoothMeshManager.startAdvertising()
+                restartAdvertising()
             }
+        }
+    }
+
+    /** Stops then starts advertising under [advertisingMutex] to prevent concurrent restarts. */
+    private suspend fun restartAdvertising() {
+        advertisingMutex.withLock {
+            bluetoothMeshManager.stopAdvertising()
+            bluetoothMeshManager.startAdvertising()
         }
     }
 

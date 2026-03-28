@@ -32,6 +32,9 @@ import java.security.SecureRandom
 object OnionBuilder {
 
     const val ONION_MAX_HOPS = 5
+    // Note: route depth is partially observable from remainingLayerBytes size. Full route-depth
+    // hiding requires a Sphinx-style fixed-buffer architecture (not implemented here).
+    // MD-02 message padding provides coarse-grained size normalisation at the transport layer.
 
     private val secureRandom = SecureRandom()
 
@@ -54,9 +57,10 @@ object OnionBuilder {
         identityKeyStore: IdentityKeyStore
     ): OnionRoutingHeader? {
         if (route.size > ONION_MAX_HOPS) {
-            Timber.d("MD-04: route length ${route.size} exceeds ONION_MAX_HOPS $ONION_MAX_HOPS, truncating")
+            Timber.d("MD-04: route length ${route.size} exceeds ONION_MAX_HOPS $ONION_MAX_HOPS, falling back")
+            return null
         }
-        val hops = route.take(ONION_MAX_HOPS)
+        val hops = route
 
         // Build terminal layer for the destination.
         val destKey = identityKeyStore.getIdentity(
@@ -163,6 +167,9 @@ object OnionBuilder {
         isTerminal: Boolean
     ): ByteArray {
         val idBytes = nextHopDeviceId.toByteArray(Charsets.UTF_8)
+        require(idBytes.size <= OnionRoutingHeader.ONION_PLAINTEXT_CAPACITY - 3) {
+            "nextHopDeviceId (${idBytes.size} bytes) exceeds onion cell capacity"
+        }
         // Format: [isTerminal:1][idLen:2][id]
         val buf = ByteArray(1 + 2 + idBytes.size)
         var pos = 0
@@ -173,6 +180,12 @@ object OnionBuilder {
         return buf
     }
 
+    /**
+     * Serialise an [OnionRoutingHeader] to bytes for embedding as [remainingLayerBytes]
+     * in an outer layer.
+     *
+     * Format: [pubKeyLen:1][pubKey][cellLen:2][cell][remLen:4][rem][isTerminal:1]
+     */
     /**
      * Serialise an [OnionRoutingHeader] to bytes for embedding as [remainingLayerBytes]
      * in an outer layer.
@@ -199,9 +212,9 @@ object OnionBuilder {
         return buf
     }
 
-    /** Pad [data] with zero bytes to exactly [capacity] bytes. Truncates if larger. */
+    /** Pad [data] with zero bytes to exactly [capacity] bytes. */
     private fun padToCapacity(data: ByteArray, capacity: Int): ByteArray {
-        if (data.size >= capacity) return data.copyOf(capacity)
+        require(data.size <= capacity) { "Data (${data.size} bytes) exceeds capacity ($capacity)" }
         return data.copyOf(capacity)  // copyOf pads with zeros automatically
     }
 

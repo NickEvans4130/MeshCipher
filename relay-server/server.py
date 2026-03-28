@@ -455,9 +455,9 @@ def health_check():
             "queued_messages": msg_count,
             "registered_devices": device_count,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            # MD-05: mix strategy status (no message content or metadata exposed).
+            # MD-05: mix strategy name only — pool depth is omitted from the
+            # unauthenticated endpoint to prevent traffic-analysis side-channels.
             "mix_strategy": RELAY_MIX_STRATEGY,
-            "mix_pool_size": _mix_strategy.pool_size(),
             "uptime_seconds": int(time.time() - _server_start_time),
         }
     )
@@ -823,7 +823,16 @@ def relay_message():
 
     # MD-05: route through the mix strategy instead of forwarding immediately.
     # The mix strategy's background worker calls _do_forward() at the appropriate time.
-    _mix_strategy.enqueue(recipient_id, message_data)
+    # Enqueue failure must not turn into a 500 after the QueuedMessage row is already
+    # committed — the client would retry and create duplicates. Log and continue so the
+    # durable row remains available for polling.
+    try:
+        _mix_strategy.enqueue(recipient_id, message_data)
+    except Exception:
+        app.logger.exception(
+            "Failed to enqueue message %s into mix strategy; leaving it available for polling",
+            message.id,
+        )
 
     return (
         jsonify(

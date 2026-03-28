@@ -77,6 +77,16 @@ def _bootstrap_mix_module():
     )
 
     mod = types.ModuleType("relay_server_mix")
+    # Populate the config globals that _build_mix_strategy() reads at module level.
+    mod.__dict__.update(
+        {
+            "RELAY_MIX_STRATEGY": os.environ.get("RELAY_MIX_STRATEGY", "TIMED_BATCH"),
+            "RELAY_BATCH_INTERVAL_MS": int(os.environ.get("RELAY_BATCH_INTERVAL_MS", "500")),
+            "RELAY_POOL_MIN_SIZE": int(os.environ.get("RELAY_POOL_MIN_SIZE", "3")),
+            "RELAY_POOL_DELAY_MIN_MS": int(os.environ.get("RELAY_POOL_DELAY_MIN_MS", "300")),
+            "RELAY_POOL_DELAY_MAX_MS": int(os.environ.get("RELAY_POOL_DELAY_MAX_MS", "600")),
+        }
+    )
     exec(compile(module_code, "<relay_server_mix>", "exec"), mod.__dict__)
     sys.modules["relay_server_mix"] = mod
 
