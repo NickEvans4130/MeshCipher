@@ -93,6 +93,13 @@ class SettingsViewModel @Inject constructor(
             initialValue = false
         )
 
+    val ephemeralOnionMode: StateFlow<Boolean> = appPreferences.ephemeralOnionMode
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     // MD-01: reactive privacy profile selection.
     val privacyProfile: StateFlow<PrivacyProfile> = privacyProfileRepository.privacyProfile
         .stateIn(
@@ -185,6 +192,12 @@ class SettingsViewModel @Inject constructor(
     fun setPreferTor(enabled: Boolean) {
         viewModelScope.launch {
             appPreferences.setPreferTor(enabled)
+        }
+    }
+
+    fun setEphemeralOnionMode(enabled: Boolean) {
+        viewModelScope.launch {
+            appPreferences.setEphemeralOnionMode(enabled)
         }
     }
 

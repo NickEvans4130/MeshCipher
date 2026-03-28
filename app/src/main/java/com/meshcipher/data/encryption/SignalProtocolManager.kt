@@ -5,12 +5,14 @@ import org.signal.libsignal.protocol.message.CiphertextMessage
 import org.signal.libsignal.protocol.message.PreKeySignalMessage
 import org.signal.libsignal.protocol.message.SignalMessage
 import org.signal.libsignal.protocol.state.PreKeyBundle
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SignalProtocolManager @Inject constructor(
-    private val signalProtocolStore: SignalProtocolStoreImpl
+    private val signalProtocolStore: SignalProtocolStoreImpl,
+    private val preKeyManager: PreKeyManager
 ) {
 
     fun encryptMessage(
@@ -44,6 +46,8 @@ class SignalProtocolManager @Inject constructor(
         contact: com.meshcipher.domain.model.Contact,
         preKeyBundle: PreKeyBundle
     ) {
+        val hasPqxdh = try { preKeyBundle.kyberPreKeyId > 0 } catch (e: Exception) { false }
+        Timber.d("Creating session with %s (PQXDH=%b)", contact.displayName, hasPqxdh)
         val sessionBuilder = SessionBuilder(
             signalProtocolStore,
             SignalProtocolAddress(contact.id, 1)

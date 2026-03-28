@@ -26,6 +26,7 @@ class TransportManagerTest {
     private lateinit var p2pTransport: P2PTransport
     private lateinit var dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
     private lateinit var smartModeManager: SmartModeManager
+    private lateinit var relayHealthMonitor: RelayHealthMonitor
     private lateinit var transportManager: TransportManager
 
     @Before
@@ -40,6 +41,7 @@ class TransportManagerTest {
         p2pTransport = mockk()
         dynamicBaseUrlInterceptor = mockk()
         smartModeManager = mockk(relaxed = true)
+        relayHealthMonitor = mockk(relaxed = true)
 
         every { appPreferences.connectionMode } returns flowOf(ConnectionMode.DIRECT.name)
         every { bluetoothMeshTransport.isAvailable() } returns false
@@ -57,6 +59,7 @@ class TransportManagerTest {
             p2pTransport = p2pTransport,
             dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
             smartModeManager = smartModeManager,
+            relayHealthMonitor = relayHealthMonitor,
             privacyProfileRepository = mockk(relaxed = true)
         )
     }

@@ -10,6 +10,7 @@ import android.os.IBinder
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import com.meshcipher.data.local.preferences.AppPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import net.freehaven.tor.control.TorControlConnection
 import org.torproject.jni.TorService
@@ -29,7 +31,9 @@ import javax.inject.Singleton
 
 @Singleton
 class EmbeddedTorManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val appPreferences: AppPreferences,
+    private val bridgeRepository: TorBridgeRepository
 ) {
 
     enum class State {
@@ -237,6 +241,12 @@ class EmbeddedTorManager @Inject constructor(
 
     private suspend fun monitorBootstrap(conn: TorControlConnection, service: TorService) {
         try {
+            // GAP-09 / R-11: Apply bridges before bootstrap begins so that Tor uses
+            // them from the first connection attempt. Calling applyBridgesIfConfigured()
+            // here (before the polling loop) ensures SETCONF is sent while Tor has a
+            // control connection but has not yet reached 100% bootstrap.
+            applyBridgesIfConfigured()
+
             // Poll for bootstrap completion
             var bootstrapped = false
             var pollAttempts = 0
@@ -319,7 +329,10 @@ class EmbeddedTorManager @Inject constructor(
         _status.value = _status.value.copy(state = State.CREATING_HIDDEN_SERVICE)
 
         try {
-            val savedKey = encryptedPrefs.getString("hs_private_key", null)
+            // GAP-10 / R-10: Read the ephemeral preference synchronously at decision time
+            // to avoid using a stale cached value (race between init collector and first call).
+            val ephemeralMode = appPreferences.ephemeralOnionMode.firstOrNull() ?: false
+            val savedKey = if (ephemeralMode) null else encryptedPrefs.getString("hs_private_key", null)
 
             val portMapping: Map<Int, String> = mapOf(80 to "127.0.0.1:$localPort")
             // jtorctl addOnion returns keys: "onionAddress", "onionPrivKey"
@@ -342,16 +355,17 @@ class EmbeddedTorManager @Inject constructor(
                 return
             }
 
-            // Save private key for persistent .onion across restarts
-            // jtorctl returns the raw key; we must prefix it for reuse
-            if (privateKey != null && savedKey == null) {
+            // Save private key for persistent .onion across restarts (persistent mode only)
+            if (!ephemeralMode && privateKey != null && savedKey == null) {
                 val keyToSave = if (privateKey.contains(":")) {
                     privateKey
                 } else {
                     "ED25519-V3:$privateKey"
                 }
                 encryptedPrefs.edit().putString("hs_private_key", keyToSave).apply()
-                Timber.d("Saved hidden service private key")
+                Timber.d("Saved hidden service private key (persistent mode)")
+            } else if (ephemeralMode) {
+                Timber.d("Ephemeral mode: onion key not persisted — address valid for this session only")
             }
 
             val onionAddr = "$onionHost.onion"
@@ -369,6 +383,36 @@ class EmbeddedTorManager @Inject constructor(
                 state = State.ERROR,
                 errorMessage = "Hidden service error: ${e.message}"
             )
+        }
+    }
+
+    /**
+     * GAP-09 / R-11: Apply configured bridges via the Tor control port.
+     * Called after Tor is bootstrapped. UseBridges and Bridge directives
+     * can be set via SETCONF. ClientTransportPlugin requires a torrc restart —
+     * if obfs4proxy is not already configured, Tor logs a warning and we
+     * document this limitation.
+     *
+     * A full bridge restart path (write torrc fragment + restart) is tracked
+     * as a future improvement when the Guardian Project exposes an explicit API.
+     */
+    suspend fun applyBridgesIfConfigured() {
+        val conn = torControlConnection ?: return
+        val bridges = bridgeRepository.getBridges()
+        if (bridges.isEmpty()) {
+            Timber.d("No bridges configured — using vanilla Tor")
+            return
+        }
+
+        try {
+            conn.setConf("UseBridges", "1")
+            bridges.forEach { bridge ->
+                conn.setConf("Bridge", bridge.toBridgeLine())
+                Timber.d("Applied bridge: %s %s", bridge.type, bridge.address)
+            }
+            Timber.d("Applied %d bridge(s) via SETCONF", bridges.size)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to apply bridges via control port")
         }
     }
 

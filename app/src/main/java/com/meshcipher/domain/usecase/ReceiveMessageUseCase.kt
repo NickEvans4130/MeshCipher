@@ -97,6 +97,7 @@ class ReceiveMessageUseCase @Inject constructor(
             // GAP-06 / R-06: Desktop sent its decision on the link confirmation request
             ContentTypes.LINK_CONFIRMED -> processLinkConfirmed(queued)
             ContentTypes.LINK_DENIED -> processLinkDenied(queued)
+            ContentTypes.ONION_ADDRESS_UPDATE -> handleOnionAddressUpdate(queued)
             else -> processTextMessage(queued)
         }
     }
@@ -125,6 +126,37 @@ class ReceiveMessageUseCase @Inject constructor(
         } catch (e: Exception) {
             Timber.w(e, "Could not extract deviceId from link confirmation payload")
             null
+        }
+    }
+
+    /**
+     * GAP-10 / R-10: Handle an ephemeral onion address update from a contact.
+     * Verifies the sender is a known contact and updates their stored onion address.
+     */
+    private suspend fun handleOnionAddressUpdate(queued: QueuedMessage) {
+        try {
+            val payloadStr = String(android.util.Base64.decode(queued.encryptedContent, android.util.Base64.NO_WRAP))
+            val json = org.json.JSONObject(payloadStr)
+            val newOnionAddress = if (json.has("onionAddress")) json.getString("onionAddress") else return
+            val senderId = queued.senderId
+
+            // Only update address for known, trusted contacts
+            val contact = contactRepository.getContact(senderId) ?: run {
+                Timber.w("OnionAddressUpdate from unknown sender %s — ignored", senderId)
+                return
+            }
+
+            // Validate strict v3 onion address: exactly 56 base32 chars (a-z2-7) + ".onion"
+            val normalized = newOnionAddress.trim().lowercase()
+            if (!normalized.matches(Regex("^[a-z2-7]{56}\\.onion$"))) {
+                Timber.w("OnionAddressUpdate: invalid v3 onion address format — ignored")
+                return
+            }
+
+            contactRepository.updateContact(contact.copy(onionAddress = normalized))
+            Timber.d("Updated onion address for %s to %s...", contact.displayName, normalized.take(6))
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to handle OnionAddressUpdate")
         }
     }
 

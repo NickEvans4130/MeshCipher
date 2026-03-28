@@ -64,6 +64,7 @@ fun SettingsScreen(
     onP2PTorClick: () -> Unit = {},
     onGuideClick: () -> Unit = {},
     onLinkedDevicesClick: () -> Unit = {},
+    onBridgeSettingsClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val connectionMode by viewModel.connectionMode.collectAsState()
@@ -75,6 +76,7 @@ fun SettingsScreen(
     val relayServerUrl by viewModel.relayServerUrl.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
     val preferTor by viewModel.preferTor.collectAsState()
+    val ephemeralOnionMode by viewModel.ephemeralOnionMode.collectAsState()
     // MD-01: privacy profile selection state.
     val privacyProfile by viewModel.privacyProfile.collectAsState()
     val context = LocalContext.current
@@ -371,6 +373,79 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // GAP-10 / R-10: Ephemeral .onion mode
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = SecureGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Ephemeral .onion address",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Text(
+                                text = "Generate a new Tor address each session. Contacts are notified automatically. Recommended for high-risk use.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = ephemeralOnionMode,
+                            onCheckedChange = { viewModel.setEphemeralOnionMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnSecureGreen,
+                                checkedTrackColor = SecureGreen,
+                                uncheckedThumbColor = TextSecondary,
+                                uncheckedTrackColor = TacticalElevated,
+                                uncheckedBorderColor = DividerMedium
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // GAP-09 / R-11: Bridge settings
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onBridgeSettingsClick),
+                colors = CardDefaults.cardColors(containerColor = TacticalSurface),
+                border = BorderStroke(1.dp, DividerSubtle)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = SecureGreen, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Configure Tor Bridges", style = MaterialTheme.typography.bodyMedium, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Set up obfs4 bridges for censored networks", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextSecondary)
                 }
             }
 

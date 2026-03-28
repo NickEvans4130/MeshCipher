@@ -38,4 +38,16 @@ interface RelayApiService {
     suspend fun consumeNonce(
         @Body request: ConsumeNonceRequest
     ): Response<ConsumeNonceResponse>
+
+    /** RM-10 / GAP-08: Upload local pre-key bundle (with optional Kyber key for PQXDH). */
+    @POST("api/v1/prekeys")
+    suspend fun uploadPreKeyBundle(
+        @Body request: UploadPreKeyBundleRequest
+    ): Response<UploadPreKeyBundleResponse>
+
+    /** RM-10 / GAP-08: Fetch pre-key bundle for a remote user (for session initiation). */
+    @GET("api/v1/prekeys/{userId}")
+    suspend fun getPreKeyBundle(
+        @Path("userId") userId: String
+    ): Response<PreKeyBundleResponse>
 }

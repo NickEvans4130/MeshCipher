@@ -51,6 +51,7 @@ sealed class SendingState {
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val contactRepository: ContactRepository,
@@ -121,6 +122,63 @@ class ChatViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = smartModeManager.getDisplayLabel(SmartModeManager.ActiveTransport.NONE)
         )
+
+    // RM-13 / R-08: per-session verification banner dismiss and nudge snooze state,
+    // persisted across restarts via EncryptedSharedPreferences.
+    private val verifPrefs: android.content.SharedPreferences by lazy {
+        val masterKey = androidx.security.crypto.MasterKey.Builder(context)
+            .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        androidx.security.crypto.EncryptedSharedPreferences.create(
+            context,
+            "verification_nudge_prefs",
+            masterKey,
+            androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    /** True once the user has dismissed the unverified-contact banner this session. */
+    private val _bannerDismissed = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /**
+     * Incremented by [snoozeVerificationNudge] so the [showVerificationNudge] combine
+     * re-evaluates immediately after a snooze is written to prefs.
+     */
+    private val _nudgeSnoozeRefresh = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /**
+     * RM-13 / R-08: True when the contact has never verified safety numbers AND the
+     * banner has not been dismissed (session or persistent per-contact).
+     * The safetyNumberChanged banner (existing) covers the re-verify case.
+     */
+    val showUnverifiedBanner: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
+        contact,
+        _bannerDismissed
+    ) { c, dismissed ->
+        if (c == null || dismissed) return@combine false
+        val persistentDismiss = verifPrefs.getBoolean("banner_dismissed_${c.id}", false)
+        c.safetyNumberVerifiedAt == null && !c.safetyNumberChanged() && !persistentDismiss
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
+    /** RM-13 / R-08: True when ≥10 messages with unverified contact, snooze expired, nudge not yet shown. */
+    val showVerificationNudge: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
+        contact,
+        messages,
+        _nudgeSnoozeRefresh
+    ) { c, msgs, _ ->
+        if (c == null || c.safetyNumberVerifiedAt != null || c.safetyNumberChanged()) return@combine false
+        val snoozeUntil = verifPrefs.getLong("nudge_snoozed_until_${c.id}", 0L)
+        msgs.size >= 10 && System.currentTimeMillis() > snoozeUntil
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
 
     init {
         // Mark conversation as read when chat is opened
@@ -424,6 +482,21 @@ class ChatViewModel @Inject constructor(
 
     fun clearSendingState() {
         _sendingState.value = SendingState.Idle
+    }
+
+    /** RM-13 / R-08: Dismiss the unverified-contact banner for this contact. */
+    fun dismissVerificationBanner() {
+        val contactId = contact.value?.id ?: return
+        _bannerDismissed.value = true
+        verifPrefs.edit().putBoolean("banner_dismissed_$contactId", true).apply()
+    }
+
+    /** RM-13 / R-08: Snooze the 10-message nudge for 24 hours. */
+    fun snoozeVerificationNudge() {
+        val contactId = contact.value?.id ?: return
+        val snoozeUntil = System.currentTimeMillis() + 24 * 60 * 60 * 1000L
+        verifPrefs.edit().putLong("nudge_snoozed_until_$contactId", snoozeUntil).apply()
+        _nudgeSnoozeRefresh.value++
     }
 
     /**
