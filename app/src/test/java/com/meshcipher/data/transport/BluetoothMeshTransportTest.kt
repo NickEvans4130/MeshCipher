@@ -3,7 +3,9 @@ package com.meshcipher.data.transport
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.GattServerManager
 import com.meshcipher.data.bluetooth.routing.MeshRouter
+import com.meshcipher.data.encryption.SignalProtocolStoreImpl
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.domain.repository.PrivacyProfileRepository
 import com.meshcipher.domain.model.Identity
 import com.meshcipher.domain.model.MeshPeer
 import io.mockk.coEvery
@@ -47,7 +49,9 @@ class BluetoothMeshTransportTest {
             bluetoothMeshManager,
             gattServerManager,
             meshRouter,
-            identityManager
+            identityManager,
+            mockk(relaxed = true),
+            mockk(relaxed = true)
         )
     }
 

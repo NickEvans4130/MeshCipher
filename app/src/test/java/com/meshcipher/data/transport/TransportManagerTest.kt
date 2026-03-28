@@ -59,7 +59,8 @@ class TransportManagerTest {
             p2pTransport = p2pTransport,
             dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
             smartModeManager = smartModeManager,
-            relayHealthMonitor = relayHealthMonitor
+            relayHealthMonitor = relayHealthMonitor,
+            privacyProfileRepository = mockk(relaxed = true)
         )
     }
 

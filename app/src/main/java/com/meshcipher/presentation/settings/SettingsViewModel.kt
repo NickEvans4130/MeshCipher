@@ -12,6 +12,8 @@ import com.meshcipher.data.local.preferences.AppPreferences.Companion.DEFAULT_RE
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
 import com.meshcipher.domain.model.MessageExpiryMode
+import com.meshcipher.domain.model.PrivacyProfile
+import com.meshcipher.domain.repository.PrivacyProfileRepository
 import com.meshcipher.util.PermissionUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +32,8 @@ class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val torManager: TorManager,
     private val bluetoothMeshManager: BluetoothMeshManager,
-    private val identityManager: IdentityManager
+    private val identityManager: IdentityManager,
+    private val privacyProfileRepository: PrivacyProfileRepository
 ) : AndroidViewModel(application) {
 
     val connectionMode: StateFlow<ConnectionMode> = appPreferences.connectionMode
@@ -95,6 +98,14 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = false
+        )
+
+    // MD-01: reactive privacy profile selection.
+    val privacyProfile: StateFlow<PrivacyProfile> = privacyProfileRepository.privacyProfile
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = PrivacyProfile.STANDARD
         )
 
     private val _hasBluetoothPermissions = MutableStateFlow(false)
@@ -187,6 +198,13 @@ class SettingsViewModel @Inject constructor(
     fun setEphemeralOnionMode(enabled: Boolean) {
         viewModelScope.launch {
             appPreferences.setEphemeralOnionMode(enabled)
+        }
+    }
+
+    // MD-01: persist and propagate privacy profile change.
+    fun setPrivacyProfile(profile: PrivacyProfile) {
+        viewModelScope.launch {
+            privacyProfileRepository.setPrivacyProfile(profile)
         }
     }
 }

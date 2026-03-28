@@ -5,10 +5,14 @@ import hashlib
 import hmac
 import html
 import os
+import random
+import secrets
 import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from typing import Any, Dict, List, Optional
 
 import jwt as pyjwt
 from cryptography.hazmat.primitives.asymmetric import ec, utils
@@ -90,6 +94,22 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", os.environ.get("ADMIN_KEY", ""
 # Challenge expiry
 CHALLENGE_EXPIRY_MINUTES = 5
 
+# ---------------------------------------------------------------------------
+# MD-05: Relay Mix Strategy configuration
+#
+# RELAY_MIX_STRATEGY: "TIMED_BATCH" (default) or "POOL_MIX"
+#   TIMED_BATCH — accumulate inbound messages and flush in random order every
+#                 RELAY_BATCH_INTERVAL_MS milliseconds.
+#   POOL_MIX    — hold messages until pool >= RELAY_POOL_MIN_SIZE AND each
+#                 message's pre-drawn random delay has elapsed; inject synthetic
+#                 cover messages when pool is undersized.
+# ---------------------------------------------------------------------------
+RELAY_MIX_STRATEGY = os.environ.get("RELAY_MIX_STRATEGY", "TIMED_BATCH").upper()
+RELAY_BATCH_INTERVAL_MS = int(os.environ.get("RELAY_BATCH_INTERVAL_MS", "3000"))
+RELAY_POOL_MIN_SIZE = int(os.environ.get("RELAY_POOL_MIN_SIZE", "10"))
+RELAY_POOL_DELAY_MIN_MS = int(os.environ.get("RELAY_POOL_DELAY_MIN_MS", "2000"))
+RELAY_POOL_DELAY_MAX_MS = int(os.environ.get("RELAY_POOL_DELAY_MAX_MS", "8000"))
+
 # JWT token expiry — reduced to 7 days (GAP-04 / R-05: limits exposure window)
 TOKEN_EXPIRY_DAYS = 7
 
@@ -107,6 +127,174 @@ limiter = Limiter(
 )
 
 sock = Sock(app)
+
+# Server start time for uptime reporting.
+_server_start_time = time.time()
+
+# ---------------------------------------------------------------------------
+# MD-05: Mix Strategy Abstraction
+#
+# Both strategies share the same interface: enqueue() + start_background().
+# Forwarding is done via _forward_message(), which pushes over WebSocket or
+# leaves the message in the DB queue for HTTP polling — identical to the
+# pre-sprint immediate-forward path.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _PoolEntry:
+    """A message held in the PoolMix pool."""
+    message_data: Dict[str, Any]
+    recipient_id: str
+    eligible_at: float  # monotonic time when this message may be forwarded
+
+
+class TimedBatchMix:
+    """
+    MD-05 TIMED_BATCH strategy.
+
+    Accumulate inbound messages; every RELAY_BATCH_INTERVAL_MS milliseconds,
+    shuffle the batch and forward all messages in random order.
+    """
+
+    def __init__(self, interval_ms: int):
+        self._interval_s = interval_ms / 1000.0
+        self._queue: List[Dict[str, Any]] = []
+        self._lock = threading.Lock()
+
+    def enqueue(self, recipient_id: str, message_data: Dict[str, Any]) -> None:
+        with self._lock:
+            self._queue.append(message_data)
+
+    def start_background(self, forward_fn) -> None:
+        def _loop():
+            while True:
+                time.sleep(self._interval_s)
+                with self._lock:
+                    batch = self._queue[:]
+                    self._queue.clear()
+                if batch:
+                    random.shuffle(batch)
+                    for msg in batch:
+                        try:
+                            forward_fn(msg)
+                        except Exception:
+                            pass  # individual forward failures are non-fatal
+
+        t = threading.Thread(target=_loop, daemon=True, name="mix-timed-batch")
+        t.start()
+
+    def pool_size(self) -> int:
+        with self._lock:
+            return len(self._queue)
+
+
+class PoolMix:
+    """
+    MD-05 POOL_MIX strategy.
+
+    Hold each message until:
+      1. pool size >= RELAY_POOL_MIN_SIZE, AND
+      2. a per-message random delay (drawn at enqueue time) has elapsed.
+
+    When pool < RELAY_POOL_MIN_SIZE, inject synthetic cover messages (random
+    bytes padded to 256-byte blocks) to maintain minimum pool size.  Cover
+    messages will fail decryption at the recipient — this is expected and silent.
+    """
+
+    # Size of synthetic cover-message payloads (matches MD-02 block size).
+    COVER_BLOCK_SIZE = 256
+
+    def __init__(
+        self,
+        min_size: int,
+        delay_min_ms: int,
+        delay_max_ms: int,
+    ):
+        self._min_size = min_size
+        self._delay_min_s = delay_min_ms / 1000.0
+        self._delay_max_s = delay_max_ms / 1000.0
+        self._pool: List[_PoolEntry] = []
+        self._lock = threading.Lock()
+
+    def enqueue(self, recipient_id: str, message_data: Dict[str, Any]) -> None:
+        delay = random.uniform(self._delay_min_s, self._delay_max_s)
+        entry = _PoolEntry(
+            message_data=message_data,
+            recipient_id=recipient_id,
+            eligible_at=time.monotonic() + delay,
+        )
+        with self._lock:
+            self._pool.append(entry)
+            self._top_up_cover_messages()
+
+    def _top_up_cover_messages(self) -> None:
+        """Inject synthetic cover messages until pool >= min_size. Caller holds lock."""
+        while len(self._pool) < self._min_size:
+            cover_bytes = secrets.token_bytes(self.COVER_BLOCK_SIZE)
+            cover_b64 = base64.b64encode(cover_bytes).decode()
+            cover_entry = _PoolEntry(
+                message_data={
+                    "id": str(uuid.uuid4()),
+                    "sender_id": "_cover_",
+                    "recipient_id": "_cover_",
+                    "encrypted_content": cover_b64,
+                    "content_type": 0,
+                    "queued_at": datetime.now(timezone.utc).isoformat(),
+                    "_is_cover": True,
+                },
+                recipient_id="_cover_",
+                eligible_at=time.monotonic() + random.uniform(
+                    self._delay_min_s, self._delay_max_s
+                ),
+            )
+            self._pool.append(cover_entry)
+
+    def start_background(self, forward_fn) -> None:
+        def _loop():
+            while True:
+                time.sleep(0.2)
+                now = time.monotonic()
+                to_forward = []
+                with self._lock:
+                    remaining = []
+                    for entry in self._pool:
+                        if len(self._pool) >= self._min_size and now >= entry.eligible_at:
+                            to_forward.append(entry)
+                        else:
+                            remaining.append(entry)
+                    self._pool = remaining
+                    self._top_up_cover_messages()
+                for entry in to_forward:
+                    if entry.message_data.get("_is_cover"):
+                        continue  # discard cover messages after they leave the pool
+                    try:
+                        forward_fn(entry.message_data)
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=_loop, daemon=True, name="mix-pool")
+        t.start()
+
+    def pool_size(self) -> int:
+        with self._lock:
+            return len(self._pool)
+
+
+def _build_mix_strategy():
+    if RELAY_MIX_STRATEGY == "POOL_MIX":
+        return PoolMix(
+            min_size=RELAY_POOL_MIN_SIZE,
+            delay_min_ms=RELAY_POOL_DELAY_MIN_MS,
+            delay_max_ms=RELAY_POOL_DELAY_MAX_MS,
+        )
+    # Default: TIMED_BATCH (also covers unknown values of RELAY_MIX_STRATEGY).
+    return TimedBatchMix(interval_ms=RELAY_BATCH_INTERVAL_MS)
+
+
+# Initialised after Flask app context is available (see bottom of file).
+_mix_strategy = _build_mix_strategy()
+
 
 # ---------------------------------------------------------------------------
 # WebSocket Active Connections
@@ -294,6 +482,10 @@ def health_check():
             "queued_messages": msg_count,
             "registered_devices": device_count,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            # MD-05: mix strategy name only — pool depth is omitted from the
+            # unauthenticated endpoint to prevent traffic-analysis side-channels.
+            "mix_strategy": RELAY_MIX_STRATEGY,
+            "uptime_seconds": int(time.time() - _server_start_time),
         }
     )
 
@@ -514,6 +706,23 @@ def ws_push_message(recipient_id, message_data):
         return False
 
 
+def _do_forward(message_data: Dict[str, Any]) -> None:
+    """
+    MD-05: Forward a message that has been released by the mix strategy.
+
+    Attempts WebSocket push first; if the recipient is not connected the message
+    remains in the DB queue for HTTP polling retrieval.
+    """
+    recipient_id = message_data.get("recipient_id", "")
+    if not recipient_id or recipient_id == "_cover_":
+        return
+    ws_push_message(recipient_id, message_data)
+
+
+# MD-05: start the mix strategy background worker once the module is loaded.
+_mix_strategy.start_background(_do_forward)
+
+
 @sock.route("/api/v1/relay/ws")
 def websocket_endpoint(ws):
     """Raw WebSocket endpoint. Client must send auth message first."""
@@ -630,20 +839,32 @@ def relay_message():
     db.session.add(message)
     db.session.commit()
 
-    # Try to push via WebSocket if recipient is connected
-    pushed = ws_push_message(recipient_id, {
+    message_data = {
         "id": message.id,
         "sender_id": sender_id,
         "recipient_id": recipient_id,
         "encrypted_content": encrypted_content,
         "content_type": content_type,
         "queued_at": message.queued_at.isoformat(),
-    })
+    }
+
+    # MD-05: route through the mix strategy instead of forwarding immediately.
+    # The mix strategy's background worker calls _do_forward() at the appropriate time.
+    # Enqueue failure must not turn into a 500 after the QueuedMessage row is already
+    # committed — the client would retry and create duplicates. Log and continue so the
+    # durable row remains available for polling.
+    try:
+        _mix_strategy.enqueue(recipient_id, message_data)
+    except Exception:
+        app.logger.exception(
+            "Failed to enqueue message %s into mix strategy; leaving it available for polling",
+            message.id,
+        )
 
     return (
         jsonify(
             {
-                "status": "pushed" if pushed else "queued",
+                "status": "queued",
                 "message_id": message.id,
                 "queued_at": message.queued_at.isoformat(),
             }

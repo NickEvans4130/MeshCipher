@@ -7,6 +7,8 @@ import com.meshcipher.data.local.preferences.AppPreferences
 import com.meshcipher.data.remote.api.RelayApiService
 import com.meshcipher.data.tor.TorManager
 import com.meshcipher.domain.model.ConnectionMode
+import com.meshcipher.domain.repository.PrivacyProfileRepository
+import com.meshcipher.util.MessagePadding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,7 +37,8 @@ class TransportManager @Inject constructor(
     private val p2pTransport: P2PTransport,
     private val dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
     private val smartModeManager: SmartModeManager,
-    private val relayHealthMonitor: RelayHealthMonitor
+    private val relayHealthMonitor: RelayHealthMonitor,
+    private val privacyProfileRepository: PrivacyProfileRepository
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,6 +46,8 @@ class TransportManager @Inject constructor(
 
     @Volatile private var smartModeEnabled = true
     @Volatile private var preferTor = false
+    // MD-02: true when padding should be applied to outbound messages.
+    @Volatile private var paddingEnabled = false
 
     @Volatile
     private var torTransport: InternetTransport? = null
@@ -75,6 +80,13 @@ class TransportManager @Inject constructor(
             }
         }
         relayHealthMonitor.startMonitoring()
+        // MD-02: observe privacy profile to enable/disable message padding.
+        scope.launch {
+            privacyProfileRepository.privacyProfile.collect { profile ->
+                paddingEnabled = profile.isEnhanced()
+                Timber.d("Message padding: %s (profile=%s)", if (paddingEnabled) "enabled" else "disabled", profile)
+            }
+        }
     }
 
     fun getActiveTransport(): InternetTransport {
@@ -106,6 +118,20 @@ class TransportManager @Inject constructor(
         encryptedContent: ByteArray,
         contentType: Int = 0
     ): Result<String> {
+        // MD-02: pad payload to a fixed-size block boundary when HIGH_PRIVACY/MAXIMUM is active.
+        // Padding is applied here, outside Signal Protocol encryption, so the wire ciphertext
+        // length is normalised and cannot reveal content type via traffic analysis.
+        val outboundContent = if (paddingEnabled) {
+            try {
+                MessagePadding.pad(encryptedContent)
+            } catch (e: IllegalArgumentException) {
+                Timber.e(e, "$TAG: payload too large to pad, rejecting send")
+                return Result.failure(e)
+            }
+        } else {
+            encryptedContent
+        }
+
         // Compute effective ConnectionMode: Smart Mode overrides manual selection.
         //   - Smart Mode OFF → use stored ConnectionMode as-is.
         //   - Smart Mode ON + preferTor → effective DIRECT mode, but use TOR transport
@@ -130,7 +156,7 @@ class TransportManager @Inject constructor(
         // ── P2P_TOR: P2P Tor → WiFi Direct → Bluetooth ──────────────────────
         if (effectiveMode == ConnectionMode.P2P_TOR) {
             if (p2pTransport.isAvailable()) {
-                val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
+                val p2pResult = p2pTransport.sendMessage(recipientId, outboundContent, contentType)
                 if (p2pResult.isSuccess) {
                     Timber.d("$TAG: sent via P2P Tor")
                     smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.P2P_TOR)
@@ -145,7 +171,7 @@ class TransportManager @Inject constructor(
                 Timber.d("$TAG: P2P Tor not available")
             }
             if (wifiDirectTransport.isAvailable()) {
-                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, outboundContent, contentType)
                 if (wifiResult.isSuccess) {
                     smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
                     return wifiResult
@@ -153,7 +179,7 @@ class TransportManager @Inject constructor(
                 Timber.d("$TAG: WiFi Direct failed, trying Bluetooth mesh")
             }
             if (bluetoothMeshTransport.isAvailable()) {
-                val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+                val btResult = bluetoothMeshTransport.sendMessage(recipientId, outboundContent)
                 if (btResult.isSuccess) {
                     smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
                 }
@@ -168,14 +194,14 @@ class TransportManager @Inject constructor(
         // ── P2P_ONLY: WiFi Direct → Bluetooth ───────────────────────────────
         if (effectiveMode == ConnectionMode.P2P_ONLY) {
             if (wifiDirectTransport.isAvailable()) {
-                val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
+                val wifiResult = wifiDirectTransport.sendMessage(recipientId, outboundContent, contentType)
                 if (wifiResult.isSuccess) {
                     smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
                     return wifiResult
                 }
                 Timber.d("$TAG: WiFi Direct failed, trying Bluetooth mesh")
             }
-            val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            val btResult = bluetoothMeshTransport.sendMessage(recipientId, outboundContent)
             if (btResult.isSuccess) {
                 smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
             }
@@ -184,7 +210,7 @@ class TransportManager @Inject constructor(
 
         // ── DIRECT / TOR_RELAY / Smart Mode: P2P Tor → WiFi Direct → Internet → Bluetooth ──
         if (p2pTransport.isAvailable() && p2pTransport.isRecipientReachable(recipientId)) {
-            val p2pResult = p2pTransport.sendMessage(recipientId, encryptedContent, contentType)
+            val p2pResult = p2pTransport.sendMessage(recipientId, outboundContent, contentType)
             if (p2pResult.isSuccess) {
                 Timber.d("$TAG: sent via P2P Tor (opportunistic)")
                 smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.P2P_TOR)
@@ -194,7 +220,7 @@ class TransportManager @Inject constructor(
         }
 
         if (wifiDirectTransport.isAvailable()) {
-            val wifiResult = wifiDirectTransport.sendMessage(recipientId, encryptedContent, contentType)
+            val wifiResult = wifiDirectTransport.sendMessage(recipientId, outboundContent, contentType)
             if (wifiResult.isSuccess) {
                 Timber.d("$TAG: sent via WiFi Direct")
                 smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.WIFI_DIRECT)
@@ -219,7 +245,7 @@ class TransportManager @Inject constructor(
         // whichever transport the stored mode dictates.
         val internetTransport = getEffectiveInternetTransport()
         val internetResult = try {
-            internetTransport.sendMessage(senderId, recipientId, encryptedContent, contentType)
+            internetTransport.sendMessage(senderId, recipientId, outboundContent, contentType)
         } catch (e: Exception) {
             Timber.w(e, "$TAG: internet transport failed")
             Result.failure(e)
@@ -236,7 +262,7 @@ class TransportManager @Inject constructor(
 
         if (bluetoothMeshTransport.isAvailable()) {
             Timber.d("$TAG: falling back to Bluetooth mesh")
-            val btResult = bluetoothMeshTransport.sendMessage(recipientId, encryptedContent)
+            val btResult = bluetoothMeshTransport.sendMessage(recipientId, outboundContent)
             if (btResult.isSuccess) {
                 smartModeManager.reportTransportUsed(SmartModeManager.ActiveTransport.BLUETOOTH)
             }

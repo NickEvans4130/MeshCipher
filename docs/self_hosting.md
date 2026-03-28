@@ -52,6 +52,25 @@ The server reads all configuration from environment variables. Set these before 
 | `DB_NAME` | `meshcipher` | PostgreSQL database name |
 | `MESSAGE_RETENTION_HOURS` | `72` | Hours to keep delivered messages before cleanup |
 | `MAX_QUEUED_PER_RECIPIENT` | `500` | Max queued messages per recipient (prevents abuse) |
+| `RELAY_MIX_STRATEGY` | `TIMED_BATCH` | Mix strategy: `TIMED_BATCH` or `POOL_MIX`. See below. |
+| `RELAY_BATCH_INTERVAL_MS` | `3000` | (`TIMED_BATCH`) Milliseconds between batch flushes. |
+| `RELAY_POOL_MIN_SIZE` | `10` | (`POOL_MIX`) Minimum pool size before any message is forwarded. |
+| `RELAY_POOL_DELAY_MIN_MS` | `2000` | (`POOL_MIX`) Minimum per-message random hold delay in ms. |
+| `RELAY_POOL_DELAY_MAX_MS` | `8000` | (`POOL_MIX`) Maximum per-message random hold delay in ms. |
+
+### Mix Strategies (MD-05)
+
+The relay supports two traffic analysis mitigations. Without a mix strategy, a network-level adversary correlating ingress and egress timing can de-anonymise sender/recipient pairs even when message content is encrypted.
+
+**`TIMED_BATCH` (default)** — messages are held in a queue and flushed every `RELAY_BATCH_INTERVAL_MS` milliseconds in randomised order. This introduces predictable latency (suitable for moderate-threat deployments) while preventing direct timing correlation.
+
+**`POOL_MIX`** — messages are held in a pool until:
+1. The pool contains at least `RELAY_POOL_MIN_SIZE` messages, **and**
+2. A per-message random delay (drawn from `Uniform(RELAY_POOL_DELAY_MIN_MS, RELAY_POOL_DELAY_MAX_MS)`) has elapsed.
+
+When the pool is below the minimum size, synthetic cover messages (random encrypted-looking bytes) are injected automatically to maintain the threshold. Cover messages fail decryption silently at the recipient. This strategy provides stronger anonymity at the cost of higher and variable latency — recommended for high-threat deployments.
+
+The current mix strategy and pool size are visible at the `GET /api/v1/health` endpoint without exposing any message content or metadata.
 
 Example:
 

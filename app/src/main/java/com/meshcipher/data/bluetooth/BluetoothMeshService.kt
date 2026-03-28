@@ -29,12 +29,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.meshcipher.util.MessagePadding
 import timber.log.Timber
 import java.util.UUID
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class BluetoothMeshService : Service() {
+
+    // MD-03: serialises all stop/start advertising calls to prevent races
+    // between intervalRandomisationLoop() and the privacy-profile change observer.
+    private val advertisingMutex = Mutex()
 
     @Inject
     lateinit var bluetoothMeshManager: BluetoothMeshManager
@@ -49,6 +56,9 @@ class BluetoothMeshService : Service() {
     lateinit var identityManager: IdentityManager
 
     @Inject
+    lateinit var signalProtocolStore: com.meshcipher.data.encryption.SignalProtocolStoreImpl
+
+    @Inject
     lateinit var messageRepository: MessageRepository
 
     @Inject
@@ -56,6 +66,9 @@ class BluetoothMeshService : Service() {
 
     @Inject
     lateinit var contactRepository: ContactRepository
+
+    @Inject
+    lateinit var privacyProfileRepository: com.meshcipher.domain.repository.PrivacyProfileRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -85,6 +98,21 @@ class BluetoothMeshService : Service() {
         // GAP-01 / R-01: rotate BLE advertisement pseudonym on each epoch boundary.
         serviceScope.launch {
             epochRotationLoop()
+        }
+
+        // MD-03: re-randomise the advertising interval every 60 s when privacy profile is enhanced.
+        serviceScope.launch {
+            intervalRandomisationLoop()
+        }
+
+        // MD-03: restart advertising immediately when the privacy profile changes at runtime.
+        serviceScope.launch {
+            privacyProfileRepository.privacyProfile.collect {
+                if (bluetoothMeshManager.isAdvertising.value) {
+                    Timber.d("MD-03: privacy profile changed, restarting advertising")
+                    restartAdvertising()
+                }
+            }
         }
 
         Timber.d("BluetoothMeshService created")
@@ -155,7 +183,14 @@ class BluetoothMeshService : Service() {
             meshRouter.handleIncomingMessage(message, message.originDeviceId)
         }
 
-        // Check if message is for us
+        // MD-04: handle ONION routing mode — peel our layer and dispatch accordingly.
+        if (message.routingMode == com.meshcipher.data.transport.RoutingMode.ONION &&
+            message.onionHeader != null) {
+            handleOnionMessage(message, myIdentity)
+            return
+        }
+
+        // Check if message is for us (PLAINTEXT mode)
         if (message.destinationUserId == myIdentity.userId) {
             Timber.d("Mesh message %s is for us! Delivering...", message.id)
             deliverMessageLocally(message)
@@ -173,10 +208,53 @@ class BluetoothMeshService : Service() {
         }
     }
 
+    /**
+     * MD-04: Peel one onion layer and either deliver locally (if terminal) or forward
+     * the inner onion to the next hop.  Silently drops malformed layers.
+     */
+    private suspend fun handleOnionMessage(
+        message: MeshMessage,
+        myIdentity: com.meshcipher.domain.model.Identity
+    ) {
+        val onionHeader = message.onionHeader ?: return
+        val myPrivateKeyBytes = try {
+            val keyPair = signalProtocolStore.identityKeyPair
+            keyPair.privateKey.serialize()
+        } catch (e: Exception) {
+            Timber.d("MD-04: could not retrieve private key for onion peel")
+            return
+        }
+        val peeled = try {
+            com.meshcipher.data.routing.OnionPeeler.peelLayer(onionHeader, myPrivateKeyBytes)
+        } catch (e: Exception) {
+            // Decryption failure — not our layer or malformed. Drop silently.
+            Timber.d("MD-04: onion peel failed (not our layer?), dropping")
+            return
+        }
+        if (peeled.isTerminal) {
+            Timber.d("MD-04: onion terminal layer — delivering message %s", message.id)
+            deliverMessageLocally(message)
+        } else if (peeled.innerOnion != null && peeled.nextHopDeviceId != null) {
+            Timber.d("MD-04: forwarding onion to %s", peeled.nextHopDeviceId)
+            if (message.shouldRelay()) {
+                val forwarded = message.copy(
+                    hopCount = message.hopCount + 1,
+                    onionHeader = peeled.innerOnion
+                )
+                serviceScope.launch {
+                    meshRouter.routeMessage(forwarded)
+                }
+            } else {
+                Timber.d("MD-04: TTL expired on onion message, dropping")
+            }
+        }
+    }
+
     private suspend fun deliverMessageLocally(meshMessage: MeshMessage) {
         try {
-            // Decode the message content
-            val content = String(meshMessage.encryptedPayload)
+            // Decode the message content.
+            // MD-02: unpad gracefully — sender may have padded regardless of our profile.
+            val content = String(MessagePadding.unpad(meshMessage.encryptedPayload))
 
             // Find the sender contact by their user ID
             val contacts = contactRepository.getAllContacts().first()
@@ -214,6 +292,31 @@ class BluetoothMeshService : Service() {
                 senderContact.displayName, conversationId)
         } catch (e: Exception) {
             Timber.e(e, "Failed to deliver mesh message locally")
+        }
+    }
+
+    /**
+     * MD-03: Every 60 seconds, restart BLE advertising with a freshly randomised interval
+     * tier so passive scanners cannot fingerprint activity windows.  Only active when
+     * PrivacyProfile is HIGH_PRIVACY or MAXIMUM.  GATT connections are not interrupted —
+     * stopAdvertising() only halts new-connection advertisements; existing GATT connections
+     * live on the GATT server layer independently.
+     */
+    private suspend fun intervalRandomisationLoop() {
+        while (serviceScope.isActive) {
+            delay(BluetoothMeshManager.INTERVAL_RANDOMISATION_PERIOD_MS)
+            if (bluetoothMeshManager.isPrivacyProfileEnhanced() && bluetoothMeshManager.isAdvertising.value) {
+                Timber.d("MD-03: restarting advertising with new randomised interval")
+                restartAdvertising()
+            }
+        }
+    }
+
+    /** Stops then starts advertising under [advertisingMutex] to prevent concurrent restarts. */
+    private suspend fun restartAdvertising() {
+        advertisingMutex.withLock {
+            bluetoothMeshManager.stopAdvertising()
+            bluetoothMeshManager.startAdvertising()
         }
     }
 

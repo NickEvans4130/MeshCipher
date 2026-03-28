@@ -38,6 +38,8 @@ class AppPreferences @Inject constructor(
         val SMART_MODE_ENABLED = booleanPreferencesKey("smart_mode_enabled")
         val PREFER_TOR = booleanPreferencesKey("prefer_tor")
         val EPHEMERAL_ONION_MODE = booleanPreferencesKey("ephemeral_onion_mode")
+        // MD-01: persisted privacy profile selection.
+        val PRIVACY_PROFILE = stringPreferencesKey("privacy_profile")
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -167,6 +169,17 @@ class AppPreferences @Inject constructor(
     suspend fun setEphemeralOnionMode(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.EPHEMERAL_ONION_MODE] = enabled
+        }
+    }
+
+    // MD-01: privacy profile preference.
+    val privacyProfile: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PRIVACY_PROFILE] ?: "STANDARD"
+    }
+
+    suspend fun setPrivacyProfile(profile: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PRIVACY_PROFILE] = profile
         }
     }
 }
