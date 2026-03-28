@@ -50,6 +50,9 @@ class BluetoothMeshService : Service() {
     lateinit var identityManager: IdentityManager
 
     @Inject
+    lateinit var signalProtocolStore: com.meshcipher.data.encryption.SignalProtocolStoreImpl
+
+    @Inject
     lateinit var messageRepository: MessageRepository
 
     @Inject
@@ -175,7 +178,14 @@ class BluetoothMeshService : Service() {
             meshRouter.handleIncomingMessage(message, message.originDeviceId)
         }
 
-        // Check if message is for us
+        // MD-04: handle ONION routing mode — peel our layer and dispatch accordingly.
+        if (message.routingMode == com.meshcipher.data.transport.RoutingMode.ONION &&
+            message.onionHeader != null) {
+            handleOnionMessage(message, myIdentity)
+            return
+        }
+
+        // Check if message is for us (PLAINTEXT mode)
         if (message.destinationUserId == myIdentity.userId) {
             Timber.d("Mesh message %s is for us! Delivering...", message.id)
             deliverMessageLocally(message)
@@ -189,6 +199,48 @@ class BluetoothMeshService : Service() {
                 }
             } else {
                 Timber.d("Message TTL expired, not relaying")
+            }
+        }
+    }
+
+    /**
+     * MD-04: Peel one onion layer and either deliver locally (if terminal) or forward
+     * the inner onion to the next hop.  Silently drops malformed layers.
+     */
+    private suspend fun handleOnionMessage(
+        message: MeshMessage,
+        myIdentity: com.meshcipher.domain.model.Identity
+    ) {
+        val onionHeader = message.onionHeader ?: return
+        val myPrivateKeyBytes = try {
+            val keyPair = signalProtocolStore.identityKeyPair
+            keyPair.privateKey.serialize()
+        } catch (e: Exception) {
+            Timber.d("MD-04: could not retrieve private key for onion peel")
+            return
+        }
+        val peeled = try {
+            com.meshcipher.data.routing.OnionPeeler.peelLayer(onionHeader, myPrivateKeyBytes)
+        } catch (e: Exception) {
+            // Decryption failure — not our layer or malformed. Drop silently.
+            Timber.d("MD-04: onion peel failed (not our layer?), dropping")
+            return
+        }
+        if (peeled.isTerminal) {
+            Timber.d("MD-04: onion terminal layer — delivering message %s", message.id)
+            deliverMessageLocally(message)
+        } else if (peeled.innerOnion != null && peeled.nextHopDeviceId != null) {
+            Timber.d("MD-04: forwarding onion to %s", peeled.nextHopDeviceId)
+            if (message.shouldRelay()) {
+                val forwarded = message.copy(
+                    hopCount = message.hopCount + 1,
+                    onionHeader = peeled.innerOnion
+                )
+                serviceScope.launch {
+                    meshRouter.routeMessage(forwarded)
+                }
+            } else {
+                Timber.d("MD-04: TTL expired on onion message, dropping")
             }
         }
     }

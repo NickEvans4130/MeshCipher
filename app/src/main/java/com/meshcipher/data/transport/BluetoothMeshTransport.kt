@@ -3,8 +3,11 @@ package com.meshcipher.data.transport
 import com.meshcipher.data.bluetooth.BluetoothMeshManager
 import com.meshcipher.data.bluetooth.GattServerManager
 import com.meshcipher.data.bluetooth.routing.MeshRouter
+import com.meshcipher.data.encryption.SignalProtocolStoreImpl
 import com.meshcipher.data.identity.IdentityManager
+import com.meshcipher.data.routing.OnionBuilder
 import com.meshcipher.domain.model.MeshMessage
+import com.meshcipher.domain.repository.PrivacyProfileRepository
 import kotlinx.coroutines.flow.SharedFlow
 import timber.log.Timber
 import java.util.UUID
@@ -16,7 +19,9 @@ class BluetoothMeshTransport @Inject constructor(
     private val bluetoothMeshManager: BluetoothMeshManager,
     private val gattServerManager: GattServerManager,
     private val meshRouter: MeshRouter,
-    private val identityManager: IdentityManager
+    private val identityManager: IdentityManager,
+    private val privacyProfileRepository: PrivacyProfileRepository,
+    private val signalProtocolStore: SignalProtocolStoreImpl
 ) {
 
     val incomingMessages: SharedFlow<MeshMessage> = gattServerManager.receivedMessages
@@ -43,6 +48,36 @@ class BluetoothMeshTransport @Inject constructor(
         Timber.d("Sending from user %s to %s", identity.userId, recipientUserId)
 
         val messageId = UUID.randomUUID().toString()
+
+        // MD-04: build onion routing header when privacy profile is HIGH_PRIVACY/MAXIMUM
+        // and a multi-hop route exists.  Falls back to PLAINTEXT silently if route is
+        // incomplete or key material is unavailable.
+        val profile = privacyProfileRepository.getPrivacyProfile()
+        var routingMode = RoutingMode.PLAINTEXT
+        var onionHeader: OnionRoutingHeader? = null
+        if (profile.isEnhanced()) {
+            val route = meshRouter.routingTable.getRoute(recipientUserId)
+            if (route != null) {
+                val routePeers = bluetoothMeshManager.discoveredPeers.value
+                    .filter { it.deviceId == route.nextHopDeviceId }
+                val destPeers = bluetoothMeshManager.discoveredPeers.value
+                    .filter { it.userId == recipientUserId }
+                val destPeer = destPeers.firstOrNull()
+                if (routePeers.isNotEmpty() && destPeer != null) {
+                    val built = OnionBuilder.buildOnion(routePeers, destPeer, signalProtocolStore)
+                    if (built != null) {
+                        routingMode = RoutingMode.ONION
+                        onionHeader = built
+                        Timber.d("MD-04: built onion for %s via %d hops", recipientUserId, routePeers.size)
+                    } else {
+                        Timber.d("MD-04: onion build failed, falling back to PLAINTEXT routing")
+                    }
+                } else {
+                    Timber.d("MD-04: insufficient route data for onion, falling back to PLAINTEXT")
+                }
+            }
+        }
+
         val meshMessage = MeshMessage(
             id = messageId,
             originDeviceId = identity.deviceId,
@@ -51,7 +86,9 @@ class BluetoothMeshTransport @Inject constructor(
             encryptedPayload = encryptedContent,
             timestamp = System.currentTimeMillis(),
             ttl = MeshMessage.MAX_TTL,
-            hopCount = 0
+            hopCount = 0,
+            routingMode = routingMode,
+            onionHeader = onionHeader
         )
 
         Timber.d("Routing mesh message %s (%d bytes)", messageId, encryptedContent.size)
