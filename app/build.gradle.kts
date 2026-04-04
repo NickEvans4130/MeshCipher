@@ -118,7 +118,7 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Signal Protocol
-    implementation("org.signal:libsignal-android:0.44.0")
+    implementation("org.signal:libsignal-android:0.86.5")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
